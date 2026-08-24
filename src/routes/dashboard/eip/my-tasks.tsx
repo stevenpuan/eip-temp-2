@@ -7,6 +7,7 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useEipUser } from "@/lib/eip-user";
+import { useAuth } from "@/lib/auth";
 // eip_deleted_items / eip_restore_deleted / eip_purge_deleted 尚未進 types.ts
 import { supabase as supabaseAny } from "@/lib/supabase";
 import { useActiveUsers } from "@/hooks/useUsers";
@@ -25,7 +26,7 @@ import {
 } from "@/components/eip/TaskSourceBadge";
 import { TodayRoutineCard } from "@/components/eip/TodayRoutineCard";
 import { HandoverInboxCard } from "@/components/eip/HandoverInboxCard";
-import { EditTaskDialog } from "@/routes/dashboard/eip/tasks";
+import { EditTaskDialog, canEditTask } from "@/routes/dashboard/eip/tasks";
 import type { Database } from "@/integrations/supabase/types";
 import { humanizeError } from "@/lib/eip-error";
 
@@ -55,6 +56,7 @@ type DeletedItem = {
 
 function MyTasksPage() {
   const { appUser } = useEipUser();
+  const { can } = useAuth();
   const qc = useQueryClient();
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all"); // all | open | <status_id>
@@ -173,6 +175,16 @@ function MyTasksPage() {
   }, [ownedQ.data, collabQ.data]);
 
   const sourceMap = useTaskSources(allMy);
+
+  // 給 canEditTask() 判斷「我是不是這筆任務的協作者」用的對照表。
+  // collabQ 撈回來的每一筆都是「我協作」的任務，所以只需要記自己，
+  // 不必再去查全公司的 task_collaborator（任務看板那頁才需要整份）。
+  const collabMap = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    if (!appUser?.id) return m;
+    (collabQ.data ?? []).forEach((t) => m.set(t.id, new Set([appUser.id])));
+    return m;
+  }, [collabQ.data, appUser?.id]);
 
   const sortedStatuses = useMemo(
     () => [...(statusesQ.data ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -437,11 +449,15 @@ function MyTasksPage() {
         </TabsContent>
       </Tabs>
 
+      {/* 可否編輯與「任務看板」共用同一支判斷（見 tasks.tsx canEditTask）。
+          原本寫 readOnly={editTask.owner_id !== appUser.id}，只認負責人 ——
+          協作者與建立者在這頁被鎖成唯讀，跳到任務看板卻可以編，同一筆任務兩種行為。
+          後端 task_update_policy 本來就認協作者與建立者，是這裡少判斷。 */}
       {editTask && (
         <EditTaskDialog
           key={editTask.id}
           task={editTask}
-          readOnly={editTask.owner_id !== appUser.id}
+          readOnly={!canEditTask(editTask, appUser, can, collabMap)}
           onClose={() => setEditTask(null)}
           statuses={statusesQ.data ?? []}
           users={usersQ.data ?? []}

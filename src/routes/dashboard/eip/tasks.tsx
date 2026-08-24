@@ -71,7 +71,17 @@ function formatErr(e: unknown): string {
 
 type CanFn = (key: string, action?: "view" | "create" | "edit" | "delete" | "export") => boolean;
 
-function canEditTask(task: Task, appUser: AppUser | null, can: CanFn, collabMap?: Map<string, Set<string>>): boolean {
+/**
+ * 誰能編輯這筆任務。**逐字對應**後端 task_update_policy：
+ * company_admin ／（dept_manager 且管轄該部門）／ owner_id ／ created_by ／
+ * eip_is_task_collaborator()。
+ *
+ * export 出去給「我的工作」(my-tasks.tsx) 共用 —— 原本那頁自己寫
+ * `readOnly={task.owner_id !== me}`，只認負責人，於是同一筆任務同一個人
+ * 在任務看板可編、在「我的工作」是唯讀（協作者與建立者都被誤鎖）。
+ * 判斷只留這一份，不要在別頁再長出第二套。
+ */
+export function canEditTask(task: Task, appUser: AppUser | null, can: CanFn, collabMap?: Map<string, Set<string>>): boolean {
   if (!appUser) return false;
   if (task.owner_id === appUser.id) return true;
   if (task.created_by === appUser.id) return true;
