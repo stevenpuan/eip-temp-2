@@ -131,6 +131,11 @@ function canDeleteTask(task: Task, appUser: AppUser | null, can: CanFn, collabMa
 // 既有連結資料保留於資料庫不刪，要恢復顯示只需把下方旗標改為 true。
 const SHOW_URL_LINK_FIELD = false;
 
+// 2026-08-25 依客戶要求隱藏任務看板的「行事曆」分頁：首頁儀表板已經有全公司行事曆，
+// 同一份資料兩個入口只會讓人不確定該看哪一個。CalendarView 程式碼刻意保留，
+// 要恢復只需把旗標改回 true（分頁與說明文字都跟著這個旗標）。
+const SHOW_CALENDAR_TAB = false;
+
 export const Route = createFileRoute("/dashboard/eip/tasks")({
   component: () => (
     <RequirePerm module="eip_tasks">
@@ -460,7 +465,11 @@ function TasksPage() {
     <div className="space-y-6">
       <PageHeader
         title="任務看板"
-        description="全公司任務看板。支援看板 / 列表 / 行事曆三種視圖,所有篩選共用。"
+        description={
+          SHOW_CALENDAR_TAB
+            ? "全公司任務看板。支援看板 / 列表 / 行事曆三種視圖,所有篩選共用。"
+            : "全公司任務看板。支援看板 / 列表兩種視圖,所有篩選共用；行事曆請看首頁。"
+        }
         actions={
           <div className="flex items-center gap-2">
             {canExport && (
@@ -500,7 +509,7 @@ function TasksPage() {
         <TabsList>
           <TabsTrigger value="board">看板</TabsTrigger>
           <TabsTrigger value="list">列表</TabsTrigger>
-          <TabsTrigger value="calendar">行事曆</TabsTrigger>
+          {SHOW_CALENDAR_TAB && <TabsTrigger value="calendar">行事曆</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="board" className="mt-3">
@@ -542,9 +551,11 @@ function TasksPage() {
           />
         </TabsContent>
 
-        <TabsContent value="calendar" className="mt-3">
-          <CalendarView tasks={filteredTasks} statusMap={statusMap} userMap={userMap} />
-        </TabsContent>
+        {SHOW_CALENDAR_TAB && (
+          <TabsContent value="calendar" className="mt-3">
+            <CalendarView tasks={filteredTasks} statusMap={statusMap} userMap={userMap} />
+          </TabsContent>
+        )}
       </Tabs>
 
       {createOpen && appUser && (
