@@ -18,14 +18,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { humanizeError } from "@/lib/eip-error";
+import { RangeSummary } from "@/components/eip/RangeSummary";
 import {
-  RangeSummary,
   summarizeDateRange,
   summarizeTimeRange,
   syncFromDate,
   syncToDate,
   syncToTime,
-} from "@/components/eip/RangeSummary";
+} from "@/lib/eip-datetime-range";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 // 本地日期 YYYY-MM-DD（台北）

@@ -28,13 +28,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { humanizeError } from "@/lib/eip-error";
+import { RangeSummary } from "@/components/eip/RangeSummary";
 import {
-  RangeSummary,
   summarizeDateTimeRange,
   syncFromDate,
   syncToDate,
   syncToTime,
-} from "@/components/eip/RangeSummary";
+} from "@/lib/eip-datetime-range";
 
 const NO_ASSIGNEE = "__none__";
 

@@ -52,14 +52,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { humanizeError } from "@/lib/eip-error";
+import { RangeSummary } from "@/components/eip/RangeSummary";
 import {
-  RangeSummary,
   summarizeDateRange,
   summarizeTimeRange,
   syncFromDate,
   syncToDate,
   syncToTime,
-} from "@/components/eip/RangeSummary";
+} from "@/lib/eip-datetime-range";
 
 export const Route = createFileRoute("/dashboard/eip/quick-reports")({
   component: QuickReportsPage,

@@ -14,13 +14,14 @@ import {
   Trash2,
   ExternalLink,
   FolderOpen,
+  GripVertical,
 } from "lucide-react";
 
 // eip_handover_item、eip_leave_handover_item 與 eip_quick_report.deputy_id
 // 都尚未進 src/integrations/supabase/types.ts，
 // 這裡用寬鬆型別的 client，型別在本檔自行宣告。
 import { supabase } from "@/lib/supabase";
-import { LEAVE_DONE_STATUSES } from "@/lib/eip-constants";
+import { LEAVE_DONE_STATUSES, LEAVE_TYPE_LABEL } from "@/lib/eip-constants";
 import { useEipUser } from "@/lib/eip-user";
 import { useAuth } from "@/lib/auth";
 import { useActiveUsers, useAllUsers } from "@/hooks/useUsers";
@@ -47,6 +48,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { humanizeError } from "@/lib/eip-error";
+// 日期顯示與起訖工具共用同一支（見 lib/eip-datetime-range.ts）
+import { fmtDate } from "@/lib/eip-datetime-range";
 
 export const Route = createFileRoute("/dashboard/eip/handover")({
   component: HandoverPage,
@@ -431,6 +434,8 @@ function EmptyState({ tab }: { tab: string }) {
 type MyLeaveReport = {
   id: string;
   status: string;
+  /** 假別代碼（leave_type 字典表）；合併卡要顯示各段是什麼假 */
+  leave_type: string | null;
   report_date: string | null;
   leave_from: string | null;
   leave_to: string | null;
@@ -448,6 +453,7 @@ type LeaveItem = {
   sort_order: number | null;
   done_at: string | null;
   done_by: string | null;
+  created_at: string;
 };
 
 type UserOpt = { id: string; name: string };
@@ -498,10 +504,145 @@ function withCurrent(
   return [{ id: current, name: `${nameOf(current)}${suffix}` }, ...list];
 }
 
+/* ---------- 合併連續請假：判斷兩段假算不算「同一次不在」 ---------- */
+
+/** 台北日期字串 ± 天數（純字串運算，不碰 toISOString，見 AGENTS.md） */
+function shiftDate(date: string, days: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return date;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  d.setUTCDate(d.getUTCDate() + days);
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
+/** 兩個日期相差幾天（含頭含尾） */
+function daysInclusive(from: string, to: string): number {
+  const a = Date.parse(`${from}T00:00:00Z`);
+  const b = Date.parse(`${to}T00:00:00Z`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return 1;
+  return Math.max(1, Math.round((b - a) / 86400000) + 1);
+}
+
+/** 週六日？系統沒有國定假日表，連假只能靠「空隙含週末」認 */
+function isWeekendDate(date: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return false;
+  const wd = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay();
+  return wd === 0 || wd === 6;
+}
+
+/**
+ * 兩段請假算不算「同一次不在」，決定要不要併成一張交接卡。
+ *
+ * 客戶情境（2026-08-25）：連續請假但假別不同必須開兩張請假單
+ * （例 9/16 事假 ＋ 9/17~9/27 婚假），交接卡因此變兩張、代辦被切開；
+ * 但對代理人來說那是同一段「人不在」的日子，只需要一張交接清單。
+ *
+ * 規則（與客戶確認）：
+ *  ・日期相連或重疊 → 同一段
+ *  ・中間空隙 ≤ 3 天且含週末 → 同一段（週五請假、下週一再請，中間是六日；連假同理）
+ *  ・空隙全是平日 → 不同段（9/1 與 9/3 是兩次不相干的請假，不能亂併）
+ */
+function sameLeaveSpan(prevEnd: string, nextStart: string): boolean {
+  if (!prevEnd || !nextStart) return false;
+  if (nextStart <= prevEnd) return true;
+  const gap: string[] = [];
+  for (let d = shiftDate(prevEnd, 1); d < nextStart; d = shiftDate(d, 1)) {
+    gap.push(d);
+    if (gap.length > 3) return false;
+  }
+  if (gap.length === 0) return true;
+  return gap.some(isWeekendDate);
+}
+
+/** 一張交接卡＝一段連續不在，底下可能有多張請假單（假別不同） */
+type LeaveGroup = {
+  /** 主段 id，同時當 React key 與拖拉排序的暫存 key */
+  key: string;
+  /** 這一段底下的請假單，依起日升冪 */
+  reports: MyLeaveReport[];
+  /**
+   * 主段＝區間最長的那一張（一樣長取最早）。
+   * 新增的代辦掛在它底下，代理人下拉也以它的值顯示（改動會套用到整段）。
+   */
+  primary: MyLeaveReport;
+  start: string;
+  end: string;
+  closed: boolean;
+};
+
+const reportStart = (r: MyLeaveReport) =>
+  r.leave_from ? localDate(r.leave_from) : (r.report_date ?? "");
+const reportEnd = (r: MyLeaveReport) =>
+  r.leave_to ? localDate(r.leave_to) : reportStart(r);
+
+/** 假別代碼 → 中文；沒填就說沒填，不要顯示代碼 */
+const leaveTypeName = (code: string | null) =>
+  code ? (LEAVE_TYPE_LABEL[code] ?? code) : "未填假別";
+
+/** 這一段裡某一張假單的簡短標示：「9/16(三) 事假」／「9/17(四)～9/27(日) 婚假」 */
+function segmentLabel(r: MyLeaveReport): string {
+  const s = reportStart(r);
+  const e = reportEnd(r);
+  const range = s === e ? fmtDate(s) : `${fmtDate(s)}～${fmtDate(e)}`;
+  return `${range} ${leaveTypeName(r.leave_type)}`;
+}
+
+/** 把請假單依「同一次不在」併成群組。已結案與未結案不會併在一起。 */
+function groupLeaveReports(list: MyLeaveReport[]): LeaveGroup[] {
+  const sorted = [...list].sort((a, b) => {
+    const sa = reportStart(a);
+    const sb = reportStart(b);
+    if (sa !== sb) return sa < sb ? -1 : 1;
+    return a.created_at.localeCompare(b.created_at);
+  });
+
+  const groups: LeaveGroup[] = [];
+  let cur: MyLeaveReport[] = [];
+  let curEnd = "";
+  let curClosed = false;
+
+  const flush = () => {
+    if (!cur.length) return;
+    const start = reportStart(cur[0]);
+    const end = cur.reduce((m, r) => (reportEnd(r) > m ? reportEnd(r) : m), reportEnd(cur[0]));
+    const primary = cur.reduce(
+      (best, r) =>
+        daysInclusive(reportStart(r), reportEnd(r)) >
+        daysInclusive(reportStart(best), reportEnd(best))
+          ? r
+          : best,
+      cur[0],
+    );
+    groups.push({ key: primary.id, reports: [...cur], primary, start, end, closed: curClosed });
+    cur = [];
+  };
+
+  for (const r of sorted) {
+    const closed = LEAVE_DONE_STATUSES.has(r.status);
+    if (cur.length && closed === curClosed && sameLeaveSpan(curEnd, reportStart(r))) {
+      cur.push(r);
+      if (reportEnd(r) > curEnd) curEnd = reportEnd(r);
+    } else {
+      flush();
+      cur = [r];
+      curEnd = reportEnd(r);
+      curClosed = closed;
+    }
+  }
+  flush();
+
+  // 新的在上面（與原本 order by leave_from desc 的觀感一致）
+  return groups.sort((a, b) => (a.start === b.start ? 0 : a.start < b.start ? 1 : -1));
+}
+
 function MyLeaveHandoverSection({ meId }: { meId: string }) {
   const qc = useQueryClient();
   const [showClosed, setShowClosed] = useState(false);
   const [deputyBusy, setDeputyBusy] = useState<Set<string>>(new Set());
+  // 拖拉排序：dragItemId＝正在拖的項目；pendingOrder＝送出後、refetch 回來前的暫時順序
+  const [dragItemId, setDragItemId] = useState<string | null>(null);
+  const [pendingOrder, setPendingOrder] = useState<Record<string, string[]>>({});
 
   // 選人一律只給在職同仁（避免指派給離職帳號）；顯示姓名要用含停用的對照
   const activeUsersQ = useActiveUsers();
@@ -531,7 +672,7 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("eip_quick_report")
-        .select("id,status,report_date,leave_from,leave_to,deputy_id,created_at")
+        .select("id,status,leave_type,report_date,leave_from,leave_to,deputy_id,created_at")
         .eq("type", "leave")
         .eq("submitter_id", meId)
         .is("deleted_at", null)
@@ -542,10 +683,19 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
     },
   });
 
-  const allReports = reportsQ.data ?? [];
-  const openReports = allReports.filter((r) => !LEAVE_DONE_STATUSES.has(r.status));
+  // 每一層都 useMemo：reports 若每次 render 都是新陣列，下面的 groups 就白算一次
+  const allReports = useMemo(() => reportsQ.data ?? [], [reportsQ.data]);
+  const openReports = useMemo(
+    () => allReports.filter((r) => !LEAVE_DONE_STATUSES.has(r.status)),
+    [allReports],
+  );
   const closedCount = allReports.length - openReports.length;
-  const reports = showClosed ? allReports : openReports;
+  const reports = useMemo(
+    () => (showClosed ? allReports : openReports),
+    [showClosed, allReports, openReports],
+  );
+  // 連續請假（例：9/16 事假 ＋ 9/17~9/27 婚假）併成一張卡，代辦一起列
+  const groups = useMemo(() => groupLeaveReports(reports), [reports]);
 
   // 代辦一次撈完（含已結案的單），列表要顯示 x/y；用 id 集合當 key，切換開關不重打
   const reportIds = useMemo(() => allReports.map((r) => r.id).sort(), [allReports]);
@@ -559,10 +709,11 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("eip_leave_handover_item")
-        .select("id,quick_report_id,title,assignee_id,url,sort_order,done_at,done_by")
+        .select("id,quick_report_id,title,assignee_id,url,sort_order,done_at,done_by,created_at")
         .in("quick_report_id", reportIds)
         .order("sort_order", { ascending: true })
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: true })
+        .limit(1000);
       if (error) throw error;
       return (data ?? []) as LeaveItem[];
     },
@@ -577,6 +728,24 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
     return m;
   }, [itemsQ.data]);
 
+  /**
+   * 一張卡要顯示的代辦：把這一段所有假單的代辦合起來，依 sort_order 排。
+   * 拖拉送出後 server 還沒回來的空檔用 pendingOrder 撐住，畫面才不會跳回舊順序。
+   */
+  const orderedItems = (g: LeaveGroup): LeaveItem[] => {
+    const pool = g.reports.flatMap((r) => itemsByReport.get(r.id) ?? []);
+    const base = [...pool].sort(
+      (a, b) =>
+        (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.created_at.localeCompare(b.created_at),
+    );
+    const pend = pendingOrder[g.key];
+    if (!pend) return base;
+    const idx = new Map(pend.map((id, i) => [id, i]));
+    return [...base].sort(
+      (a, b) => (idx.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (idx.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    );
+  };
+
   /** 寫入成功後：本區、臨時回報頁、代理人的工作區代辦卡都要重讀 */
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["eip", "my-leave-handover"] });
@@ -585,18 +754,22 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
     void qc.invalidateQueries({ queryKey: ["eip", "leave-handover-inbox"] });
   };
 
-  /** 指定／清除這次請假的代理人。只寫 deputy_id，status 一律交給 DB trigger */
-  const setDeputy = async (reportId: string, next: string | null) => {
-    if (deputyBusy.has(reportId)) return;
-    setDeputyBusy((p) => new Set(p).add(reportId));
+  /**
+   * 指定／清除代理人。合併卡只有一個下拉，一次套用到這一段的所有請假單
+   * （客戶決定：整段一起改）。只寫 deputy_id，status 一律交給 DB trigger。
+   */
+  const setDeputy = async (g: LeaveGroup, next: string | null) => {
+    if (deputyBusy.has(g.key)) return;
+    const ids = g.reports.map((r) => r.id);
+    setDeputyBusy((p) => new Set(p).add(g.key));
     const { data, error } = await supabase
       .from("eip_quick_report")
       .update({ deputy_id: next })
-      .eq("id", reportId)
+      .in("id", ids)
       .select("id");
     setDeputyBusy((p) => {
       const n = new Set(p);
-      n.delete(reportId);
+      n.delete(g.key);
       return n;
     });
     if (error) {
@@ -609,13 +782,23 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
       refresh();
       return;
     }
+    if (data.length < ids.length) {
+      toast.error(
+        `這一段有 ${ids.length} 張請假單，只更新了 ${data.length} 張（其餘可能已結案），畫面已重新整理`,
+      );
+      refresh();
+      return;
+    }
     toast.success(next ? "已指定代理人" : "已清除代理人");
     refresh();
   };
 
-  /** 新增代辦。sort_order 取現有最大值 +1 */
+  /**
+   * 新增代辦。掛在主段（區間最長那張）底下，sort_order 取「整段」現有最大值 +1，
+   * 才不會因為 DB 預設值是「同一張假單的 max+1」而插到合併清單的中間。
+   */
   const addItem = async (
-    report: MyLeaveReport,
+    g: LeaveGroup,
     input: { title: string; assigneeId: string | null; url: string | null },
   ) => {
     const title = input.title.trim();
@@ -630,11 +813,11 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
         return false;
       }
     }
-    const existing = itemsByReport.get(report.id) ?? [];
+    const existing = orderedItems(g);
     const nextSort = existing.reduce((m, x) => Math.max(m, x.sort_order ?? 0), 0) + 1;
     // INSERT 被 RLS 擋掉是真的回 error（42501），不像 UPDATE/DELETE 靜默 0 筆
     const { error } = await supabase.from("eip_leave_handover_item").insert({
-      quick_report_id: report.id,
+      quick_report_id: g.primary.id,
       title,
       // 呼叫端（AddLeaveItemRow）選「同代理人」時已經把 deputy_id 填進來了；
       // 真的沒有代理人才會是 null（未指派），這是允許的狀態
@@ -695,6 +878,45 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
     refresh();
   };
 
+  /**
+   * 拖拉排序。整段（可能跨多張假單）重新編號 sort_order，走
+   * eip_reorder_leave_handover_items RPC 一次寫完 —— 逐列 PATCH 會打很多次 API，
+   * 中途失敗還會留下半套順序。RPC 是 SECURITY INVOKER，只有請假本人改得動。
+   *
+   * targetId 為 null＝拖到清單最後面。
+   */
+  const moveItem = async (g: LeaveGroup, dragId: string, targetId: string | null) => {
+    setDragItemId(null);
+    if (dragId === targetId) return;
+    const ids = orderedItems(g).map((i) => i.id);
+    const from = ids.indexOf(dragId);
+    if (from < 0) return;
+    const rest = ids.filter((x) => x !== dragId);
+    let insertAt = rest.length;
+    if (targetId) {
+      const t = rest.indexOf(targetId);
+      if (t < 0) return;
+      // 往下拖＝放到目標下面，往上拖＝放到目標上面
+      insertAt = from < ids.indexOf(targetId) ? t + 1 : t;
+    }
+    const next = [...rest.slice(0, insertAt), dragId, ...rest.slice(insertAt)];
+    if (next.join(",") === ids.join(",")) return;
+
+    setPendingOrder((p) => ({ ...p, [g.key]: next }));
+    const { error } = await supabase.rpc("eip_reorder_leave_handover_items", { p_ids: next });
+    if (error) {
+      toast.error(humanizeError(error, "排序"));
+    }
+    // 不管成功或失敗都以 server 為準：成功是確認、失敗是還原
+    await qc.invalidateQueries({ queryKey: ["eip", "my-leave-handover"] });
+    setPendingOrder((p) => {
+      const n = { ...p };
+      delete n[g.key];
+      return n;
+    });
+    if (!error) refresh();
+  };
+
   return (
     <Card className="mt-3">
       <CardContent className="p-3 sm:p-4 space-y-3">
@@ -722,6 +944,8 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
         <p className="text-[12.5px] text-muted-foreground">
           請假送出後不需主管核准。代理人與代辦事項可以隨時在這裡補登或修改，
           代理人勾完成後完成度會自動回傳；已完成的項目只能檢視，不能改標題或刪除。
+          連續請假就算分成幾張假單（假別不同），這裡會併成一張交接清單；
+          代辦事項可以用左邊的握把拖拉調整順序。
         </p>
 
         {(activeUsersQ.isError || allUsersQ.isError) && (
@@ -759,7 +983,7 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
               重試
             </Button>
           </div>
-        ) : reports.length === 0 ? (
+        ) : groups.length === 0 ? (
           <div className="text-xs text-muted-foreground py-2">
             {allReports.length === 0
               ? "你目前沒有請假紀錄。請假請到「我的工作」按「我要請假」，只填區間就能送出。"
@@ -767,15 +991,31 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
           </div>
         ) : (
           <div className="space-y-3">
-            {reports.map((r) => {
-              const items = itemsByReport.get(r.id) ?? [];
+            {groups.map((g) => {
+              const items = orderedItems(g);
               const done = items.filter((i) => i.done_at).length;
               const unassigned = items.filter((i) => !i.assignee_id).length;
-              const closed = LEAVE_DONE_STATUSES.has(r.status);
-              const span = leaveSpan(r.leave_from, r.leave_to, r.report_date);
-              const deputyOptions = withCurrent(others, r.deputy_id, nameOf, activeIds);
+              const closed = g.closed;
+              const merged = g.reports.length > 1;
+              // 單張維持原本的「日期＋時段＋全天/N 小時」顯示；合併卡顯示整段日期與天數
+              const span = merged
+                ? { text: `${g.start} ～ ${g.end}`, tag: `${daysInclusive(g.start, g.end)} 天` }
+                : leaveSpan(g.primary.leave_from, g.primary.leave_to, g.primary.report_date);
+              // 代理人以主段為準；各段不同時提示一下，改動會一起套用
+              const deputyId = g.primary.deputy_id ?? g.reports.find((r) => r.deputy_id)?.deputy_id ?? null;
+              const deputyMixed = new Set(g.reports.map((r) => r.deputy_id ?? "")).size > 1;
+              const deputyOptions = withCurrent(others, deputyId, nameOf, activeIds);
+              const canDrag = !closed && items.length > 1;
+              /**
+               * 徽章：closed 是 DB 的 status（由 trigger 依完成度回寫），控制能不能再編輯。
+               * 但合併卡裡「沒有代辦的那一段」永遠不會被 trigger 推成 done
+               * （rollup 只在 total > 0 時動），若只看 closed，代辦全部做完了卡片還是寫「待處理」。
+               * 所以再補一個「代辦已完成」的顯示狀態 —— 刻意不叫「已結案」，
+               * 因為那一段假單在 DB 裡真的還沒結案，而且還可以繼續補代辦。
+               */
+              const allItemsDone = !closed && items.length > 0 && done === items.length;
               return (
-                <div key={r.id} className="rounded-md border overflow-hidden">
+                <div key={g.key} className="rounded-md border overflow-hidden">
                   <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/40 border-b">
                     <span className="text-sm font-medium">{span.text}</span>
                     {span.tag && (
@@ -783,15 +1023,20 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
                         {span.tag}
                       </Badge>
                     )}
+                    {!merged && (
+                      <Badge variant="outline" className="text-[11.5px]">
+                        {leaveTypeName(g.primary.leave_type)}
+                      </Badge>
+                    )}
                     <Badge
                       variant="outline"
                       className={
-                        closed
+                        closed || allItemsDone
                           ? "bg-emerald-100 text-emerald-700 border-emerald-300"
                           : "bg-amber-100 text-amber-700 border-amber-300"
                       }
                     >
-                      {closed ? "已結案" : "待處理"}
+                      {closed ? "已結案" : allItemsDone ? "代辦已完成" : "待處理"}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
                       {itemsQ.isLoading ? (
@@ -805,17 +1050,15 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
                     <div className="flex-1" />
                     <span className="text-xs text-muted-foreground">代理人</span>
                     {closed ? (
-                      <span className="text-xs font-medium">{nameOf(r.deputy_id)}</span>
+                      <span className="text-xs font-medium">{nameOf(deputyId)}</span>
                     ) : (
                       <Select
-                        value={r.deputy_id ?? NO_ASSIGNEE}
-                        disabled={deputyBusy.has(r.id)}
-                        onValueChange={(v) =>
-                          void setDeputy(r.id, v === NO_ASSIGNEE ? null : v)
-                        }
+                        value={deputyId ?? NO_ASSIGNEE}
+                        disabled={deputyBusy.has(g.key)}
+                        onValueChange={(v) => void setDeputy(g, v === NO_ASSIGNEE ? null : v)}
                       >
                         <SelectTrigger
-                          className={`w-44 h-8 text-xs ${r.deputy_id ? "" : "text-amber-700"}`}
+                          className={`w-44 h-8 text-xs ${deputyId ? "" : "text-amber-700"}`}
                         >
                           <SelectValue placeholder="選擇代理人" />
                         </SelectTrigger>
@@ -830,6 +1073,18 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
                       </Select>
                     )}
                   </div>
+
+                  {merged && (
+                    <div className="px-3 py-1.5 text-[12.5px] text-muted-foreground bg-muted/20 border-b">
+                      這段連續請假分成 {g.reports.length} 張假單（假別不同要分開送）：
+                      {g.reports.map((r) => segmentLabel(r)).join("、")}
+                      {" "}
+                      —— 代辦事項已合併成一份，新增的會掛在「{segmentLabel(g.primary)}」。
+                      {deputyMixed && (
+                        <span className="text-amber-700">（原本各段代理人不同，改動會一起套用）</span>
+                      )}
+                    </div>
+                  )}
 
                   {itemsQ.isError ? (
                     <div className="flex items-center gap-2 px-3 py-2 text-xs">
@@ -848,18 +1103,45 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
                       還沒有代辦事項{closed ? "。" : "，可在下方新增。"}
                     </div>
                   ) : (
-                    <div className="divide-y">
+                    <div
+                      className="divide-y"
+                      // 拖到清單空白處＝放到最後面
+                      onDragOver={(e) => {
+                        if (canDrag && dragItemId) e.preventDefault();
+                      }}
+                      onDrop={(e) => {
+                        if (!canDrag || !dragItemId) return;
+                        e.preventDefault();
+                        void moveItem(g, dragItemId, null);
+                      }}
+                    >
                       {items.map((it) => (
-                        <LeaveItemRow
+                        <div
                           key={it.id}
-                          item={it}
-                          users={withCurrent(others, it.assignee_id, nameOf, activeIds)}
-                          nameOf={nameOf}
-                          deputyId={r.deputy_id}
-                          canEdit={!closed}
-                          onSave={saveItem}
-                          onDelete={removeItem}
-                        />
+                          onDragOver={(e) => {
+                            if (canDrag && dragItemId && dragItemId !== it.id) e.preventDefault();
+                          }}
+                          onDrop={(e) => {
+                            if (!canDrag || !dragItemId) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void moveItem(g, dragItemId, it.id);
+                          }}
+                          className={dragItemId === it.id ? "opacity-50" : undefined}
+                        >
+                          <LeaveItemRow
+                            item={it}
+                            users={withCurrent(others, it.assignee_id, nameOf, activeIds)}
+                            nameOf={nameOf}
+                            deputyId={deputyId}
+                            canEdit={!closed}
+                            canDrag={canDrag}
+                            onDragStart={() => setDragItemId(it.id)}
+                            onDragEnd={() => setDragItemId(null)}
+                            onSave={saveItem}
+                            onDelete={removeItem}
+                          />
+                        </div>
                       ))}
                     </div>
                   )}
@@ -873,8 +1155,8 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
                   {!closed && !itemsQ.isError && (
                     <AddLeaveItemRow
                       users={others}
-                      deputyId={r.deputy_id}
-                      onAdd={(input) => addItem(r, input)}
+                      deputyId={deputyId}
+                      onAdd={(input) => addItem(g, input)}
                     />
                   )}
                 </div>
@@ -927,6 +1209,9 @@ function LeaveItemRow({
   nameOf,
   deputyId,
   canEdit,
+  canDrag,
+  onDragStart,
+  onDragEnd,
   onSave,
   onDelete,
 }: {
@@ -936,6 +1221,10 @@ function LeaveItemRow({
   /** 這張請假單目前的代理人；「同代理人」要寫入的就是這個 id（不是 null） */
   deputyId: string | null;
   canEdit: boolean;
+  /** 這一段有兩項以上且未結案才給拖拉 */
+  canDrag: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
   onSave: (
     item: LeaveItem,
     patch: { title: string; assignee_id: string | null; url: string | null },
@@ -1037,6 +1326,18 @@ function LeaveItemRow({
 
   return (
     <div className="flex items-start gap-2 px-3 py-2 text-sm">
+      {/* 只有握把 draggable：整列 draggable 會讓編輯模式的輸入框沒辦法用滑鼠選字 */}
+      {canDrag && (
+        <span
+          draggable
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          title="按住拖拉可以調整順序"
+          className="mt-0.5 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-foreground"
+        >
+          <GripVertical className="w-4 h-4" />
+        </span>
+      )}
       <div className="flex-1 min-w-0">
         <div className={done ? "line-through text-muted-foreground break-words" : "break-words"}>
           {item.title}
