@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { MultiSelect } from "@/components/eip/MultiSelect";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+// humanizeError 的 import 在檔案下半部既有一份（第 1073 行附近），這裡不再重複
 
 export const Route = createFileRoute("/dashboard/org")({ component: () => (
     <RequirePerm module="org">
@@ -59,6 +61,27 @@ interface Member {
   status: string | null;
   department_id: string | null;
   tenant_id: string | null;
+}
+
+/**
+ * 部門督導（eip_dept_supervisor）。
+ *
+ * 為什麼需要這個畫面（2026-08-25 客戶要求）：
+ * 有些人要檢視／批示別的部門的資料（部門日誌、部門例行彙總…），但他既不在那個部門，
+ * 也沒有帶人，department.manager_id 又只能放一個人 —— 過去無路可走。
+ *
+ * 資料庫早就有這張表，也已經接進 eip_is_dept_supervisor / eip_user_can_scope_dept /
+ * eip_my_view_departments / eip_dept_effective_manager（＝「視同該部門主管」的管轄判斷，
+ * 且自動涵蓋子部門），只是一直沒有設定入口，全公司只有 1 筆是當初手動寫進去的。
+ * 這裡把入口補上，後端一行都不用改。
+ *
+ * 只需要「看」不需要「管」的人，請走「帳號管理 › 跨部門資料授權」（唯讀、不含工作日誌）。
+ */
+interface Supervisor {
+  department_id: string;
+  user_id: string;
+  note: string | null;
+  created_at: string;
 }
 
 const ROLE_OPTIONS = [
@@ -137,6 +160,28 @@ function Page() {
     return m;
   }, [userRoleRows]);
 
+  // 部門督導：一個部門可以有多位，一個人也可以督導多個部門
+  const { data: sups = [] } = useQuery({
+    queryKey: ["org_dept_supervisors", tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("eip_dept_supervisor")
+        .select("department_id,user_id,note,created_at")
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as Supervisor[];
+    },
+  });
+  const supsByDept = useMemo(() => {
+    const m = new Map<string, string[]>();
+    sups.forEach((x) => {
+      const arr = m.get(x.department_id);
+      if (arr) arr.push(x.user_id);
+      else m.set(x.department_id, [x.user_id]);
+    });
+    return m;
+  }, [sups]);
+
   const managerMap = useMemo(() => {
     const m = new Map<string, { name: string | null; job_title: string | null }>();
     allUsers.forEach((u) => m.set(u.id, { name: u.name, job_title: u.job_title }));
@@ -173,6 +218,7 @@ function Page() {
     ? depts.find((d) => d.id === selected.parent_id)?.name ?? "—"
     : "—";
   const manager = selected?.manager_id ? managerMap.get(selected.manager_id) : null;
+  const selectedSups = selectedId ? (supsByDept.get(selectedId) ?? []) : [];
 
   const members = useMemo(
     () => allUsers
@@ -183,11 +229,13 @@ function Page() {
 
   const refetchDepts = () => qc.invalidateQueries({ queryKey: ["org_depts"] });
   const refetchUsers = () => qc.invalidateQueries({ queryKey: ["org_all_users", tenantId] });
+  const refetchSups = () => qc.invalidateQueries({ queryKey: ["org_dept_supervisors"] });
 
   // Dialog states
   const [deptDialog, setDeptDialog] = useState<{ mode: "create" | "edit"; parentId: string | null; dept: Dept | null } | null>(null);
   const [deleteDeptId, setDeleteDeptId] = useState<string | null>(null);
   const [managerDialogOpen, setManagerDialogOpen] = useState(false);
+  const [supDialogOpen, setSupDialogOpen] = useState(false);
   const [memberDialog, setMemberDialog] = useState<Member | null>(null);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
 
@@ -277,6 +325,39 @@ function Page() {
                   ) : (
                     <div className="text-sm text-muted-foreground">未指派</div>
                   )}
+                </div>
+
+                <div className="rounded-md border p-3 bg-muted/30">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-xs text-muted-foreground">部門督導（視同主管，可多人）</div>
+                    {isAdmin && (
+                      <Button size="sm" variant="ghost" className="h-7" onClick={() => setSupDialogOpen(true)}>
+                        <Pencil className="w-3.5 h-3.5" />指派
+                      </Button>
+                    )}
+                  </div>
+                  {selectedSups.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedSups.map((uid) => {
+                        const u = managerMap.get(uid);
+                        return (
+                          <Badge key={uid} variant="secondary" className="font-normal">
+                            {u?.name ?? uid}
+                            {u?.job_title && (
+                              <span className="ml-1 text-muted-foreground">{u.job_title}</span>
+                            )}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">未指派</div>
+                  )}
+                  <p className="text-[12.5px] text-muted-foreground mt-2 leading-relaxed">
+                    督導不必隸屬這個部門，也不必帶人。指定後他對這個部門<b>（含子部門）</b>的權限與部門主管相同：
+                    看得到並可批示部門日誌、可催填部門例行，任務／會議／文件／臨時回報／常態工作的管轄範圍也一併涵蓋。
+                    只要「看」不要「管」的人，請改用「帳號管理 › 跨部門資料授權」（唯讀，不含工作日誌）。
+                  </p>
                 </div>
 
                 <div>
@@ -391,6 +472,18 @@ function Page() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {selected && (
+        <SupervisorDialog
+          open={supDialogOpen}
+          onClose={() => setSupDialogOpen(false)}
+          dept={selected}
+          users={allUsers.filter((u) => u.status === "active")}
+          current={selectedSups}
+          createdBy={me?.id ?? null}
+          onSaved={() => { refetchSups(); refetchUsers(); setSupDialogOpen(false); }}
+        />
+      )}
 
       {selected && (
         <ManagerDialog
@@ -621,6 +714,149 @@ function DeptFormDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * 指派部門督導。與 ManagerDialog 的差別：可多人、不動 department.manager_id。
+ *
+ * 存檔後若有人的角色不是部門主管／系統管理，會再問一次要不要一併升成「部門主管」——
+ * 因為部門日誌與部門例行彙總這兩個模組，一般成員角色的 can_view 是 false：
+ * 只給督導範圍、沒給角色，他有資料權限但選單根本不會出現（權限＝角色 × 範圍，兩層都要）。
+ */
+function SupervisorDialog({
+  open, onClose, dept, users, current, createdBy, onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  dept: Dept;
+  users: Member[];
+  /** 這個部門目前的督導 user_id */
+  current: string[];
+  createdBy: string | null;
+  onSaved: () => void;
+}) {
+  const [ids, setIds] = useState<string[]>(current);
+  const [saving, setSaving] = useState(false);
+  const [pendingPromote, setPendingPromote] = useState<string[]>([]);
+
+  // 換部門或外部資料變動時重置；用 join 當依賴，避免每次 render 都是新陣列
+  const currentKey = current.join(",");
+  useEffect(() => { setIds(currentKey ? currentKey.split(",") : []); }, [dept.id, currentKey]);
+
+  const nameOf = (uid: string) => users.find((u) => u.id === uid)?.name ?? uid;
+
+  const save = async () => {
+    if (saving) return;
+    const add = ids.filter((x) => !current.includes(x));
+    const del = current.filter((x) => !ids.includes(x));
+    if (!add.length && !del.length) { onClose(); return; }
+
+    setSaving(true);
+    if (del.length) {
+      const { error } = await supabase
+        .from("eip_dept_supervisor")
+        .delete()
+        .eq("department_id", dept.id)
+        .in("user_id", del);
+      if (error) { setSaving(false); toast.error(humanizeError(error, "移除督導")); return; }
+    }
+    if (add.length) {
+      const { error } = await supabase.from("eip_dept_supervisor").insert(
+        add.map((uid) => ({ department_id: dept.id, user_id: uid, created_by: createdBy })),
+      );
+      if (error) { setSaving(false); toast.error(humanizeError(error, "新增督導")); return; }
+    }
+    setSaving(false);
+    toast.success("已更新部門督導");
+
+    // 角色不足的人：問要不要一併設為部門主管，否則他看不到部門日誌／彙總的選單
+    const needPromote = ids.filter((uid) => {
+      const u = users.find((x) => x.id === uid);
+      return u && u.role !== "dept_manager" && u.role !== "company_admin";
+    });
+    if (needPromote.length) { setPendingPromote(needPromote); return; }
+    onSaved();
+  };
+
+  /** 走 eip_set_user_roles（與帳號管理同一條路），保留他原有的其他角色 */
+  const promote = async (yes: boolean) => {
+    const targets = pendingPromote;
+    setPendingPromote([]);
+    if (!yes || !targets.length) { onSaved(); return; }
+
+    const { data: roleRows, error: re } = await supabase.from("roles").select("id,code");
+    const dm = (roleRows ?? []).find((r: { id: string; code: string }) => r.code === "dept_manager");
+    if (re || !dm) {
+      toast.error("角色更新失敗：讀不到角色設定，請到帳號管理手動指派「部門主管」");
+      onSaved();
+      return;
+    }
+    let failed = 0;
+    for (const uid of targets) {
+      const { data: mine } = await supabase.from("user_roles").select("role_id").eq("user_id", uid);
+      const ridList = Array.from(
+        new Set([...((mine ?? []) as { role_id: string }[]).map((r) => r.role_id), dm.id]),
+      );
+      const { error } = await supabase.rpc("eip_set_user_roles", { p_user_id: uid, p_role_ids: ridList });
+      if (error) failed += 1;
+    }
+    if (failed) toast.error(`有 ${failed} 位角色更新失敗，請到帳號管理手動指派「部門主管」`);
+    else toast.success("已同步設為部門主管");
+    onSaved();
+  };
+
+  return (
+    <>
+      <Dialog open={open && pendingPromote.length === 0} onOpenChange={(v) => { if (!v) onClose(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>指派部門督導</DialogTitle>
+            <DialogDescription>
+              選擇「視同 {dept.name} 主管」的人員，可多選；含子部門。
+            </DialogDescription>
+          </DialogHeader>
+          <MultiSelect
+            values={ids}
+            onChange={setIds}
+            options={users.map((u) => ({
+              value: u.id,
+              label: u.job_title ? `${u.name ?? u.id}（${u.job_title}）` : (u.name ?? u.id),
+            }))}
+            allLabel="（未指派）"
+            itemLabel="督導"
+            contentClassName="w-72"
+          />
+          {ids.length > 0 && (
+            <p className="text-xs text-muted-foreground">已選：{ids.map(nameOf).join("、")}</p>
+          )}
+          <p className="text-[12.5px] text-muted-foreground">
+            督導對這個部門（含子部門）的權限與部門主管相同，包含檢視與批示部門日誌。
+            只要唯讀檢視的人請改用「跨部門資料授權」。
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose} disabled={saving}>取消</Button>
+            <Button onClick={() => void save()} disabled={saving}>{saving ? "儲存中…" : "儲存"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={pendingPromote.length > 0} onOpenChange={(v) => { if (!v) void promote(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>要一併把角色設為「部門主管」嗎？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingPromote.map(nameOf).join("、")} 目前的角色看不到「部門日誌」與「部門例行彙總」的選單，
+              督導範圍會給了卻用不到。設為部門主管後，他仍然只能存取被指派督導的部門（與他自己的部門）。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => void promote(false)}>先不要</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void promote(true)}>設為部門主管</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
