@@ -17,6 +17,7 @@ import { exportToExcel } from "@/lib/eip-export";
 // 建立對話框的「相關連結」跟 UrlLinks 元件共用同一份格式判定，不要各寫一套
 import { validateExternalUrl } from "@/lib/eip-url";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { MultiSelect } from "@/components/eip/MultiSelect";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -173,7 +174,10 @@ function TasksPage() {
   const canExport = can("eip_tasks", "export");
 
   // 共用篩選 state
-  const [filterDept, setFilterDept] = useState("all");
+  // 部門改複選（2026-08-25 客戶要求）；空陣列＝全部部門
+  const [filterDepts, setFilterDepts] = useState<string[]>([]);
+  // 協作者篩選（複選）：任一被選到的人是協作者就算符合
+  const [filterCollabs, setFilterCollabs] = useState<string[]>([]);
   const [filterProject, setFilterProject] = useState("all");
   const [filterOwner, setFilterOwner] = useState("all");
   const [filterPriority, setFilterPriority] = useState<string>("all");
@@ -327,7 +331,12 @@ function TasksPage() {
     const kw = keyword.trim().toLowerCase();
     return (tasksQ.data ?? []).filter((t) => {
       if (t.parent_task_id) return false; // 不在主清單顯示子任務
-      if (filterDept !== "all" && t.department_id !== filterDept) return false;
+      if (filterDepts.length && !(t.department_id && filterDepts.includes(t.department_id))) return false;
+      if (filterCollabs.length) {
+        // 協作者名單是另一張表撈回來的（collabMap: task_id → user_id 集合）
+        const set = collabMap.get(t.id);
+        if (!set || !filterCollabs.some((uid) => set.has(uid))) return false;
+      }
       if (filterProject !== "all" && t.project_id !== filterProject) return false;
       if (filterOwner !== "all" && t.owner_id !== filterOwner) return false;
       if (filterPriority !== "all" && t.priority !== filterPriority) return false;
@@ -342,7 +351,7 @@ function TasksPage() {
       }
       return true;
     });
-  }, [tasksQ.data, filterDept, filterProject, filterOwner, filterPriority, filterStatus, dueFrom, dueTo, keyword, onlyReassign, reassignQ.data, onlyMine, appUser?.id]);
+  }, [tasksQ.data, filterDepts, filterCollabs, collabMap, filterProject, filterOwner, filterPriority, filterStatus, dueFrom, dueTo, keyword, onlyReassign, reassignQ.data, onlyMine, appUser?.id]);
 
   const sourceMap = useTaskSources(filteredTasks);
 
@@ -488,7 +497,8 @@ function TasksPage() {
 
       <SharedFilters
         keyword={keyword} setKeyword={setKeyword}
-        filterDept={filterDept} setFilterDept={setFilterDept}
+        filterDepts={filterDepts} setFilterDepts={setFilterDepts}
+        filterCollabs={filterCollabs} setFilterCollabs={setFilterCollabs}
         filterProject={filterProject} setFilterProject={setFilterProject}
         filterOwner={filterOwner} setFilterOwner={setFilterOwner}
         filterPriority={filterPriority} setFilterPriority={setFilterPriority}
@@ -653,7 +663,8 @@ function TasksPage() {
 /* ============ 共用篩選 ============ */
 function SharedFilters(props: {
   keyword: string; setKeyword: (v: string) => void;
-  filterDept: string; setFilterDept: (v: string) => void;
+  filterDepts: string[]; setFilterDepts: (v: string[]) => void;
+  filterCollabs: string[]; setFilterCollabs: (v: string[]) => void;
   filterProject: string; setFilterProject: (v: string) => void;
   filterOwner: string; setFilterOwner: (v: string) => void;
   filterPriority: string; setFilterPriority: (v: string) => void;
@@ -669,7 +680,8 @@ function SharedFilters(props: {
   const activeCount = [
     props.filterStatus !== "all",
     props.filterPriority !== "all",
-    props.filterDept !== "all",
+    props.filterDepts.length > 0,
+    props.filterCollabs.length > 0,
     props.filterProject !== "all",
     props.filterOwner !== "all",
     !!props.dueFrom,
@@ -728,12 +740,14 @@ function SharedFilters(props: {
         options={[{ value: "all", label: "全部狀態" }, ...props.statuses.map((s) => ({ value: s.id, label: s.name }))]} />
       <MiniSelect value={props.filterPriority} onChange={props.setFilterPriority}
         options={[{ value: "all", label: "全部優先級" }, ...ALL_PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))]} />
-      <MiniSelect value={props.filterDept} onChange={props.setFilterDept}
-        options={[{ value: "all", label: "全部部門" }, ...props.departments.map((d) => ({ value: d.id, label: d.name }))]} />
+      <MultiSelect values={props.filterDepts} onChange={props.setFilterDepts} allLabel="全部部門" itemLabel="部門"
+        options={props.departments.map((d) => ({ value: d.id, label: d.name }))} contentClassName="w-64" />
       <MiniSelect value={props.filterProject} onChange={props.setFilterProject}
         options={[{ value: "all", label: "全部專案" }, ...props.projects.map((p) => ({ value: p.id, label: p.name }))]} />
       <MiniSelect value={props.filterOwner} onChange={props.setFilterOwner}
         options={[{ value: "all", label: "全部負責人" }, ...props.users.map((u) => ({ value: u.id, label: u.name }))]} />
+      <MultiSelect values={props.filterCollabs} onChange={props.setFilterCollabs} allLabel="全部協作者" itemLabel="協作者"
+        options={props.users.map((u) => ({ value: u.id, label: u.name }))} contentClassName="w-64" />
       <div className="grid gap-1">
         <Input type="date" value={props.dueFrom} onChange={(e) => props.setDueFrom(e.target.value)} className="h-9 w-full" />
         <span className="text-xs text-muted-foreground text-center">至</span>
@@ -777,12 +791,14 @@ function SharedFilters(props: {
             options={[{ value: "all", label: "全部狀態" }, ...props.statuses.map((s) => ({ value: s.id, label: s.name }))]} />
           <MiniSelect value={props.filterPriority} onChange={props.setFilterPriority}
             options={[{ value: "all", label: "全部優先級" }, ...ALL_PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))]} />
-          <MiniSelect value={props.filterDept} onChange={props.setFilterDept}
-            options={[{ value: "all", label: "全部部門" }, ...props.departments.map((d) => ({ value: d.id, label: d.name }))]} />
+          <MultiSelect values={props.filterDepts} onChange={props.setFilterDepts} allLabel="全部部門" itemLabel="部門"
+            options={props.departments.map((d) => ({ value: d.id, label: d.name }))} contentClassName="w-64" />
           <MiniSelect value={props.filterProject} onChange={props.setFilterProject}
             options={[{ value: "all", label: "全部專案" }, ...props.projects.map((p) => ({ value: p.id, label: p.name }))]} />
           <MiniSelect value={props.filterOwner} onChange={props.setFilterOwner}
             options={[{ value: "all", label: "全部負責人" }, ...props.users.map((u) => ({ value: u.id, label: u.name }))]} />
+          <MultiSelect values={props.filterCollabs} onChange={props.setFilterCollabs} allLabel="全部協作者" itemLabel="協作者"
+            options={props.users.map((u) => ({ value: u.id, label: u.name }))} contentClassName="w-64" />
           <div className="flex items-center gap-1 xl:col-span-2 min-w-0">
             <Input type="date" value={props.dueFrom} onChange={(e) => props.setDueFrom(e.target.value)} className="h-9 w-full" />
             <span className="text-xs text-muted-foreground shrink-0">至</span>

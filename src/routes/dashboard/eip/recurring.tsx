@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth";
 import { DEFAULT_TENANT_ID, PRIORITY_LABEL } from "@/lib/eip-constants";
 import { taipeiToday } from "@/lib/eip-routine";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { MultiSelect } from "@/components/eip/MultiSelect";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,18 @@ type AppUser = Database["public"]["Tables"]["app_user"]["Row"];
 type Department = Database["public"]["Tables"]["department"]["Row"];
 type Priority = Database["public"]["Enums"]["task_priority"];
 type ReportField = { label: string; type: "text" | "checkbox" | "number" | "date" };
+
+/**
+ * 對接人員（可複選）。`counterpart_user_ids` 是主資料，舊的單一欄位
+ * `counterpart_user_id` 由 DB trigger 同步為第一位，只留給還沒更新的讀取端。
+ * 兩者都還沒進 src/integrations/supabase/types.ts，所以這裡自己取。
+ */
+const counterpartIds = (r: Rule | null | undefined): string[] => {
+  const raw = (r as unknown as { counterpart_user_ids?: string[] | null })?.counterpart_user_ids;
+  if (Array.isArray(raw) && raw.length) return raw.filter(Boolean);
+  const one = (r as unknown as { counterpart_user_id?: string | null })?.counterpart_user_id;
+  return one ? [one] : [];
+};
 
 const FREQ_LABEL: Record<string, string> = {
   daily: "每日", weekly: "每週", monthly: "每月", yearly: "每年", manual: "手動",
@@ -80,8 +93,9 @@ const REPORT_TYPE_LABEL: Record<string, string> = {
 function RuleDetail({ r, userMap, deptMap }: {
   r: Rule; userMap: Map<string, AppUser>; deptMap: Map<string, Department>;
 }) {
-  const counterpart = r.counterpart_user_id
-    ? (userMap.get(r.counterpart_user_id)?.name ?? "—")
+  const ids = counterpartIds(r);
+  const counterpart = ids.length
+    ? ids.map((id) => userMap.get(id)?.name ?? id).join("、")
     : (r.counterpart?.trim() || "—");
   const fields = Array.isArray(r.report_fields) ? (r.report_fields as unknown as ReportField[]) : [];
   return (
@@ -147,6 +161,19 @@ function RecurringPage() {
   const toggleExpand = (id: string) =>
     setExpanded((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
+  /**
+   * 篩選（2026-08-25 客戶要求：不相關的部門與人不需要一直看到）。
+   *
+   * 注意這是**畫面篩選**，不是權限：權限在 DB 的 recurring_read 政策
+   * （有填對接部門的規則，非相關成員本來就讀不到；管理者依設計仍全公司可見）。
+   * 客戶自己的帳號掛著「管理者」，所以清單本來會出現別部門的規則 ——
+   * 用「只看與我相關」預設開啟把它收乾淨，要稽核時關掉即可。
+   */
+  const [kw, setKw] = useState("");
+  const [filterDepts, setFilterDepts] = useState<string[]>([]);
+  const [filterOwners, setFilterOwners] = useState<string[]>([]);
+  const [onlyRelated, setOnlyRelated] = useState(true);
+
   const rulesQ = useQuery({
     queryKey: ["eip", "recurring"],
     queryFn: async () => {
@@ -183,6 +210,37 @@ function RecurringPage() {
     (deptQ.data ?? []).forEach((d) => m.set(d.id, d));
     return m;
   }, [deptQ.data]);
+
+  /** 與我相關＝我負責 / 我是對接人員 / 我建立 / 對接部門就是我的部門 */
+  const isRelatedToMe = (r: Rule) => {
+    const me = appUser?.id;
+    if (!me) return true;
+    if (r.owner_id === me) return true;
+    if (counterpartIds(r).includes(me)) return true;
+    if (r.created_by === me) return true;
+    if (r.department_id && r.department_id === appUser?.department_id) return true;
+    return false;
+  };
+
+  const shownRules = useMemo(() => {
+    const k = kw.trim().toLowerCase();
+    return (rulesQ.data ?? []).filter((r) => {
+      if (onlyRelated && !isRelatedToMe(r)) return false;
+      // "none" 代表「未指定部門」那一群
+      if (filterDepts.length) {
+        const key = r.department_id ?? "none";
+        if (!filterDepts.includes(key)) return false;
+      }
+      if (filterOwners.length && !filterOwners.includes(r.owner_id)) return false;
+      if (k) {
+        const hay = `${r.title} ${r.description ?? ""}`.toLowerCase();
+        if (!hay.includes(k)) return false;
+      }
+      return true;
+    });
+    // isRelatedToMe 只讀 appUser，附在依賴裡即可
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rulesQ.data, onlyRelated, filterDepts, filterOwners, kw, appUser?.id, appUser?.department_id]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["eip", "recurring"] });
 
@@ -236,12 +294,69 @@ function RecurringPage() {
           <TabsTrigger value="dashboard">達成儀表板</TabsTrigger>
         </TabsList>
         <TabsContent value="rules">
+          <div className="flex flex-wrap items-center gap-2 mt-3 mb-2">
+            <Input
+              placeholder="搜尋標題 / 說明"
+              value={kw}
+              onChange={(e) => setKw(e.target.value)}
+              className="h-9 w-full sm:w-56"
+            />
+            <div className="w-full sm:w-44">
+              <MultiSelect
+                values={filterDepts}
+                onChange={setFilterDepts}
+                allLabel="全部部門"
+                itemLabel="部門"
+                options={[
+                  { value: "none", label: "未指定部門" },
+                  ...(deptQ.data ?? []).map((d) => ({ value: d.id, label: d.name })),
+                ]}
+                contentClassName="w-64"
+              />
+            </div>
+            <div className="w-full sm:w-44">
+              <MultiSelect
+                values={filterOwners}
+                onChange={setFilterOwners}
+                allLabel="全部負責人"
+                itemLabel="負責人"
+                options={(usersQ.data ?? []).map((u) => ({ value: u.id, label: u.name }))}
+                contentClassName="w-64"
+              />
+            </div>
+            <Button
+              type="button"
+              variant={onlyRelated ? "default" : "outline"}
+              className="h-9"
+              onClick={() => setOnlyRelated((v) => !v)}
+              title="只顯示我負責、我是對接人員、我建立，或對接部門是我部門的規則"
+            >
+              只看與我相關
+            </Button>
+            {(kw || filterDepts.length || filterOwners.length || !onlyRelated) && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-9"
+                onClick={() => { setKw(""); setFilterDepts([]); setFilterOwners([]); setOnlyRelated(true); }}
+              >
+                重設
+              </Button>
+            )}
+            <span className="text-xs text-muted-foreground ml-auto">
+              顯示 {shownRules.length} / {(rulesQ.data ?? []).length} 筆
+            </span>
+          </div>
           <Card>
             <CardContent className="p-0 overflow-x-auto">
               {rulesQ.isLoading ? (
                 <div className="text-sm text-muted-foreground text-center py-8">載入中…</div>
               ) : !rulesQ.data?.length ? (
                 <div className="text-sm text-muted-foreground text-center py-8">尚無常態工作規則。</div>
+              ) : !shownRules.length ? (
+                <div className="text-sm text-muted-foreground text-center py-8">
+                  沒有符合篩選條件的規則。可以關掉「只看與我相關」或按「重設」。
+                </div>
               ) : (
                 <Table>
                   <TableHeader>
@@ -258,7 +373,7 @@ function RecurringPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rulesQ.data.map((r) => (
+                    {shownRules.map((r) => (
                       <Fragment key={r.id}>
                       <TableRow>
                         <TableCell className="w-8 pr-0 align-middle">
@@ -340,10 +455,9 @@ function RuleDialog({
   const [ownerId, setOwnerId] = useState<string>(rule?.owner_id ?? ownerFallback);
   const [deptId, setDeptId] = useState<string>(rule?.department_id ?? "none");
   const [counterpart, setCounterpart] = useState(rule?.counterpart ?? "");
-  // 對接人員改為指定實際帳號（會通知並列為協作者）；counterpart 文字欄保留給舊資料
-  const [counterpartUserId, setCounterpartUserId] = useState<string>(
-    (rule as unknown as { counterpart_user_id?: string })?.counterpart_user_id ?? "none",
-  );
+  // 對接人員＝指定實際帳號（會通知並列為協作者），2026-08-25 起可複選；
+  // counterpart 文字欄保留給舊資料
+  const [counterpartUserIds, setCounterpartUserIds] = useState<string[]>(counterpartIds(rule));
   const [priority, setPriority] = useState<Priority>(rule?.priority ?? "normal");
   const [freq, setFreq] = useState<string>(rule?.freq ?? "monthly");
   const [weekday, setWeekday] = useState<number>(rule?.weekday ?? 1);
@@ -375,7 +489,8 @@ function RuleDialog({
         owner_id: ownerId,
         department_id: deptId === "none" ? null : deptId,
         counterpart: counterpart.trim() || null,
-        counterpart_user_id: counterpartUserId === "none" ? null : counterpartUserId,
+        // 陣列是主資料；單一欄位交給 DB trigger 同步（trg_recurring_sync_counterparts）
+        counterpart_user_ids: counterpartUserIds,
         priority,
         freq,
         weekday: freq === "weekly" ? weekday : null,
@@ -440,14 +555,23 @@ function RuleDialog({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>對接人員（選填，會通知並列為協作者）</Label>
-            <Select value={counterpartUserId} onValueChange={setCounterpartUserId}>
-              <SelectTrigger><SelectValue placeholder="選擇人員…" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">—（不指定）</SelectItem>
-                {users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Label>對接人員（選填，可複選；會通知並列為協作者）</Label>
+            <MultiSelect
+              values={counterpartUserIds}
+              onChange={setCounterpartUserIds}
+              options={users.map((u) => ({ value: u.id, label: u.name }))}
+              allLabel="—（不指定）"
+              itemLabel="對接人員"
+              contentClassName="w-64"
+            />
+            {counterpartUserIds.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {counterpartUserIds
+                  .map((id) => users.find((u) => u.id === id)?.name ?? id)
+                  .join("、")}
+                {" "}—— 每次產生任務時都會掛成協作者並收到通知，也看得到這條規則。
+              </p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>優先級</Label>
