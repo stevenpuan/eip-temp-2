@@ -28,6 +28,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { humanizeError } from "@/lib/eip-error";
+import {
+  RangeSummary,
+  summarizeDateTimeRange,
+  syncFromDate,
+  syncToDate,
+  syncToTime,
+} from "@/components/eip/RangeSummary";
 
 const NO_ASSIGNEE = "__none__";
 
@@ -256,20 +263,67 @@ export function LeaveRequestDialog({
             </Select>
           </div>
 
-          {/* 區間 ＋ 代理人 */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label className="text-xs">請假起日 / 時間</Label>
-              <div className="flex gap-2 mt-1">
-                <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-9" />
-                <Input type="time" value={fromTime} onChange={(e) => setFromTime(e.target.value)} className="h-9 w-28" />
-              </div>
+          {/* 區間 ＋ 代理人。
+              摘要放在欄位「上方」：原生日曆／時鐘小視窗往下展開會蓋住欄位，
+              放下方使用者得先點掉小視窗才看得到自己選了什麼。 */}
+          <div>
+            <div className="flex items-baseline justify-between gap-2">
+              <Label className="text-xs">請假區間</Label>
+              <RangeSummary text={summarizeDateTimeRange(fromDate, fromTime, toDate, toTime)} />
             </div>
-            <div>
-              <Label className="text-xs">請假迄日 / 時間</Label>
-              <div className="flex gap-2 mt-1">
-                <Input type="date" value={toDate} min={fromDate} onChange={(e) => setToDate(e.target.value)} className="h-9" />
-                <Input type="time" value={toTime} onChange={(e) => setToTime(e.target.value)} className="h-9 w-28" />
+            <div className="grid gap-3 sm:grid-cols-2 mt-1">
+              <div>
+                <Label className="text-xs">請假起日 / 時間</Label>
+                <div className="flex gap-2 mt-1">
+                  <Input
+                    type="date"
+                    value={fromDate}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFromDate(v);
+                      // 迄日沒填或早於起日就跟上，不覆蓋使用者已選的較晚迄日
+                      setToDate((prev) => syncToDate(v, prev));
+                    }}
+                    onBlur={(e) => setFromDate(e.target.value)}
+                    className="h-9"
+                  />
+                  <Input
+                    type="time"
+                    value={fromTime}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFromTime(v);
+                      // 跨日時迄時屬於最後一天，不能用起時去推，只在同一天連動
+                      setToTime((prev) => syncToTime(v, prev, { sameDay: !!fromDate && fromDate === toDate }));
+                    }}
+                    onBlur={(e) => setFromTime(e.target.value)}
+                    className="h-9 w-28"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">請假迄日 / 時間</Label>
+                <div className="flex gap-2 mt-1">
+                  <Input
+                    type="date"
+                    value={toDate}
+                    min={fromDate}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setToDate(v);
+                      setFromDate((prev) => syncFromDate(v, prev));
+                    }}
+                    onBlur={(e) => setToDate(e.target.value)}
+                    className="h-9"
+                  />
+                  <Input
+                    type="time"
+                    value={toTime}
+                    onChange={(e) => setToTime(e.target.value)}
+                    onBlur={(e) => setToTime(e.target.value)}
+                    className="h-9 w-28"
+                  />
+                </div>
               </div>
             </div>
           </div>

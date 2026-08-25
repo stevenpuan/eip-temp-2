@@ -18,6 +18,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { humanizeError } from "@/lib/eip-error";
+import {
+  RangeSummary,
+  summarizeDateRange,
+  summarizeTimeRange,
+  syncFromDate,
+  syncToDate,
+  syncToTime,
+} from "@/components/eip/RangeSummary";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 // 本地日期 YYYY-MM-DD（台北）
@@ -111,6 +119,10 @@ export function QuickReportButton() {
     if (!appUser) return;
     if (!lateStart && !lateEnd && !lateDetail.trim()) {
       toast.error("請填寫遲到時段或事由");
+      return;
+    }
+    if (lateStart && lateEnd && lateEnd < lateStart) {
+      toast.error("迄時不可早於起時");
       return;
     }
     const today = todayStr();
@@ -209,15 +221,34 @@ export function QuickReportButton() {
             {/* 遲到 */}
             <TabsContent value="late" className="space-y-3 pt-2">
               <div>
-                <Label>遲到時段（今日）</Label>
+                {/* 摘要放欄位「上方」：原生時鐘小視窗往下展開會蓋住欄位，放下面等於看不到 */}
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>遲到時段（今日）</Label>
+                  <RangeSummary text={summarizeTimeRange(lateStart, lateEnd)} />
+                </div>
                 <div className="grid grid-cols-2 gap-3 mt-1">
                   <div>
                     <span className="text-xs text-muted-foreground">起</span>
-                    <Input type="time" value={lateStart} onChange={(e) => setLateStart(e.target.value)} />
+                    <Input
+                      type="time"
+                      value={lateStart}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setLateStart(v);
+                        // 迄（預計到達）沒填或早於起時就自動跟上，使用者仍可自行改
+                        setLateEnd((prev) => syncToTime(v, prev));
+                      }}
+                      onBlur={(e) => setLateStart(e.target.value)}
+                    />
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">迄（預計到達）</span>
-                    <Input type="time" value={lateEnd} onChange={(e) => setLateEnd(e.target.value)} />
+                    <Input
+                      type="time"
+                      value={lateEnd}
+                      onChange={(e) => setLateEnd(e.target.value)}
+                      onBlur={(e) => setLateEnd(e.target.value)}
+                    />
                   </div>
                 </div>
               </div>
@@ -248,7 +279,10 @@ export function QuickReportButton() {
                 </Select>
               </div>
               <div>
-                <Label>請假日期（起訖）</Label>
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>請假日期（起訖）</Label>
+                  <RangeSummary text={summarizeDateRange(leaveFromDate, leaveToDate)} />
+                </div>
                 <div className="grid grid-cols-2 gap-3 mt-1">
                   <div>
                     <span className="text-xs text-muted-foreground">起日</span>
@@ -256,28 +290,62 @@ export function QuickReportButton() {
                       type="date"
                       value={leaveFromDate}
                       onChange={(e) => {
-                        setLeaveFromDate(e.target.value);
-                        // 只補空值，不覆蓋使用者已經選好的迄日
-                        if (!leaveToDate) setLeaveToDate(e.target.value);
+                        const v = e.target.value;
+                        setLeaveFromDate(v);
+                        // 迄日沒填、或早於新的起日，就自動跟上（其餘不動使用者已選的）
+                        setLeaveToDate((prev) => syncToDate(v, prev));
                       }}
+                      onBlur={(e) => setLeaveFromDate(e.target.value)}
                     />
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">迄日</span>
-                    <Input type="date" value={leaveToDate} onChange={(e) => setLeaveToDate(e.target.value)} />
+                    <Input
+                      type="date"
+                      value={leaveToDate}
+                      min={leaveFromDate || undefined}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setLeaveToDate(v);
+                        setLeaveFromDate((prev) => syncFromDate(v, prev));
+                      }}
+                      onBlur={(e) => setLeaveToDate(e.target.value)}
+                    />
                   </div>
                 </div>
               </div>
               <div>
-                <Label>時間（選填，不填視為整日）</Label>
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>時間（選填，不填視為整日）</Label>
+                  <RangeSummary text={summarizeTimeRange(leaveFromTime, leaveToTime, "整日")} placeholder="整日" />
+                </div>
                 <div className="grid grid-cols-2 gap-3 mt-1">
                   <div>
                     <span className="text-xs text-muted-foreground">起時</span>
-                    <Input type="time" value={leaveFromTime} onChange={(e) => setLeaveFromTime(e.target.value)} />
+                    <Input
+                      type="time"
+                      value={leaveFromTime}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setLeaveFromTime(v);
+                        // 跨日的迄時屬於最後一天，不能用起時去推，所以只在同一天才連動
+                        setLeaveToTime((prev) =>
+                          syncToTime(v, prev, {
+                            sameDay: !!leaveFromDate && leaveFromDate === leaveToDate,
+                          }),
+                        );
+                      }}
+                      onBlur={(e) => setLeaveFromTime(e.target.value)}
+                    />
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">迄時</span>
-                    <Input type="time" value={leaveToTime} onChange={(e) => setLeaveToTime(e.target.value)} />
+                    <Input
+                      type="time"
+                      value={leaveToTime}
+                      onChange={(e) => setLeaveToTime(e.target.value)}
+                      onBlur={(e) => setLeaveToTime(e.target.value)}
+                    />
                   </div>
                 </div>
               </div>

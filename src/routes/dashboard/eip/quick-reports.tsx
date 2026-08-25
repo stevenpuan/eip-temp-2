@@ -52,6 +52,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { humanizeError } from "@/lib/eip-error";
+import {
+  RangeSummary,
+  summarizeDateRange,
+  summarizeTimeRange,
+  syncFromDate,
+  syncToDate,
+  syncToTime,
+} from "@/components/eip/RangeSummary";
 
 export const Route = createFileRoute("/dashboard/eip/quick-reports")({
   component: QuickReportsPage,
@@ -1182,34 +1190,85 @@ function EditReportDialog({
           {isLeave && (
             <>
               <div>
-                <Label>請假日期（起訖）</Label>
+                {/* 摘要放欄位「上方」：原生日曆小視窗往下展開會蓋住欄位，放下面等於看不到 */}
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>請假日期（起訖）</Label>
+                  <RangeSummary text={summarizeDateRange(fromDate, toDate)} />
+                </div>
                 <div className="grid grid-cols-2 gap-3 mt-1">
                   <Input
                     type="date"
                     value={fromDate}
                     onChange={(e) => {
-                      setFromDate(e.target.value);
-                      if (!toDate || toDate < e.target.value) setToDate(e.target.value);
+                      const v = e.target.value;
+                      setFromDate(v);
+                      setToDate((prev) => syncToDate(v, prev));
                     }}
+                    onBlur={(e) => setFromDate(e.target.value)}
                   />
-                  <Input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} />
+                  <Input
+                    type="date"
+                    value={toDate}
+                    min={fromDate || undefined}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setToDate(v);
+                      setFromDate((prev) => syncFromDate(v, prev));
+                    }}
+                    onBlur={(e) => setToDate(e.target.value)}
+                  />
                 </div>
               </div>
               <div>
-                <Label>時間（選填，不填視為整日）</Label>
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>時間（選填，不填視為整日）</Label>
+                  <RangeSummary text={summarizeTimeRange(fromTime, toTime, "整日")} placeholder="整日" />
+                </div>
                 <div className="grid grid-cols-2 gap-3 mt-1">
-                  <Input type="time" value={fromTime} onChange={(e) => setFromTime(e.target.value)} />
-                  <Input type="time" value={toTime} onChange={(e) => setToTime(e.target.value)} />
+                  <Input
+                    type="time"
+                    value={fromTime}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFromTime(v);
+                      // 跨日的迄時屬於最後一天，不能用起時去推，只在同一天連動
+                      setToTime((prev) => syncToTime(v, prev, { sameDay: !!fromDate && fromDate === toDate }));
+                    }}
+                    onBlur={(e) => setFromTime(e.target.value)}
+                  />
+                  <Input
+                    type="time"
+                    value={toTime}
+                    onChange={(e) => setToTime(e.target.value)}
+                    onBlur={(e) => setToTime(e.target.value)}
+                  />
                 </div>
               </div>
             </>
           )}
           {isLate && (
             <div>
-              <Label>遲到時段（{report.report_date}）</Label>
+              <div className="flex items-baseline justify-between gap-2">
+                <Label>遲到時段（{report.report_date}）</Label>
+                <RangeSummary text={summarizeTimeRange(fromTime, toTime)} />
+              </div>
               <div className="grid grid-cols-2 gap-3 mt-1">
-                <Input type="time" value={fromTime} onChange={(e) => setFromTime(e.target.value)} />
-                <Input type="time" value={toTime} onChange={(e) => setToTime(e.target.value)} />
+                <Input
+                  type="time"
+                  value={fromTime}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFromTime(v);
+                    setToTime((prev) => syncToTime(v, prev));
+                  }}
+                  onBlur={(e) => setFromTime(e.target.value)}
+                />
+                <Input
+                  type="time"
+                  value={toTime}
+                  onChange={(e) => setToTime(e.target.value)}
+                  onBlur={(e) => setToTime(e.target.value)}
+                />
               </div>
             </div>
           )}
