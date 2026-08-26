@@ -33,7 +33,7 @@ function Page() {
   };
 
   const changePassword = async () => {
-    if (pw.length < 6) { toast.error("密碼至少 6 碼"); return; }
+    if (pw.length < 8) { toast.error("密碼至少 8 碼"); return; }
     const { error } = await supabase.auth.updateUser({ password: pw });
     if (error) { toast.error(humanizeError(error, "變更密碼")); return; }
     toast.success("密碼已更新");
@@ -55,7 +55,7 @@ function Page() {
       <Card>
         <CardHeader><CardTitle className="text-base">修改密碼</CardTitle></CardHeader>
         <CardContent className="space-y-4 max-w-md">
-          <div className="space-y-1"><Label>新密碼</Label><Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="至少 6 碼" /></div>
+          <div className="space-y-1"><Label>新密碼</Label><Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="至少 8 碼" /></div>
           <Button onClick={changePassword}>更新密碼</Button>
         </CardContent>
       </Card>

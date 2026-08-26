@@ -52,6 +52,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { humanizeError } from "@/lib/eip-error";
+import { DateField, TimeField } from "@/components/eip/DateTimeField";
 import { RangeSummary } from "@/components/eip/RangeSummary";
 import {
   summarizeDateRange,
@@ -643,22 +644,22 @@ function QuickReportsPage() {
           </SelectContent>
         </Select>
         <div className="flex items-center gap-1">
-          <Input
-            type="date"
+          <DateField
             value={dateFrom}
             max={dateTo || undefined}
-            onChange={(e) => setDateFrom(e.target.value)}
+            onChange={setDateFrom}
+            clearable
+            placeholder="起日"
             className="w-40"
-            aria-label="起日"
           />
           <span className="text-xs text-muted-foreground shrink-0">至</span>
-          <Input
-            type="date"
+          <DateField
             value={dateTo}
             min={dateFrom || undefined}
-            onChange={(e) => setDateTo(e.target.value)}
+            onChange={setDateTo}
+            clearable
+            placeholder="迄日"
             className="w-40"
-            aria-label="迄日"
           />
         </div>
         <Input
@@ -1190,32 +1191,26 @@ function EditReportDialog({
           {isLeave && (
             <>
               <div>
-                {/* 摘要放欄位「上方」：原生日曆小視窗往下展開會蓋住欄位，放下面等於看不到 */}
+                {/* 摘要放欄位「上方」，順便顯示共幾天；選擇器本身是自製的 DateField */}
                 <div className="flex items-baseline justify-between gap-2">
                   <Label>請假日期（起訖）</Label>
                   <RangeSummary text={summarizeDateRange(fromDate, toDate)} />
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-1">
-                  <Input
-                    type="date"
+                  <DateField
                     value={fromDate}
-                    onChange={(e) => {
-                      const v = e.target.value;
+                    onChange={(v) => {
                       setFromDate(v);
                       setToDate((prev) => syncToDate(v, prev));
                     }}
-                    onBlur={(e) => setFromDate(e.target.value)}
                   />
-                  <Input
-                    type="date"
+                  <DateField
                     value={toDate}
                     min={fromDate || undefined}
-                    onChange={(e) => {
-                      const v = e.target.value;
+                    onChange={(v) => {
                       setToDate(v);
                       setFromDate((prev) => syncFromDate(v, prev));
                     }}
-                    onBlur={(e) => setToDate(e.target.value)}
                   />
                 </div>
               </div>
@@ -1225,22 +1220,22 @@ function EditReportDialog({
                   <RangeSummary text={summarizeTimeRange(fromTime, toTime, "整日")} placeholder="整日" />
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-1">
-                  <Input
-                    type="time"
+                  <TimeField
                     value={fromTime}
-                    onChange={(e) => {
-                      const v = e.target.value;
+                    clearable
+                    clearLabel="清除（整日）"
+                    onChange={(v) => {
                       setFromTime(v);
                       // 跨日的迄時屬於最後一天，不能用起時去推，只在同一天連動
                       setToTime((prev) => syncToTime(v, prev, { sameDay: !!fromDate && fromDate === toDate }));
                     }}
-                    onBlur={(e) => setFromTime(e.target.value)}
                   />
-                  <Input
-                    type="time"
+                  <TimeField
                     value={toTime}
-                    onChange={(e) => setToTime(e.target.value)}
-                    onBlur={(e) => setToTime(e.target.value)}
+                    clearable
+                    clearLabel="清除（整日）"
+                    min={fromDate && fromDate === toDate ? fromTime || undefined : undefined}
+                    onChange={setToTime}
                   />
                 </div>
               </div>
@@ -1253,22 +1248,14 @@ function EditReportDialog({
                 <RangeSummary text={summarizeTimeRange(fromTime, toTime)} />
               </div>
               <div className="grid grid-cols-2 gap-3 mt-1">
-                <Input
-                  type="time"
+                <TimeField
                   value={fromTime}
-                  onChange={(e) => {
-                    const v = e.target.value;
+                  onChange={(v) => {
                     setFromTime(v);
                     setToTime((prev) => syncToTime(v, prev));
                   }}
-                  onBlur={(e) => setFromTime(e.target.value)}
                 />
-                <Input
-                  type="time"
-                  value={toTime}
-                  onChange={(e) => setToTime(e.target.value)}
-                  onBlur={(e) => setToTime(e.target.value)}
-                />
+                <TimeField value={toTime} onChange={setToTime} min={fromTime || undefined} />
               </div>
             </div>
           )}

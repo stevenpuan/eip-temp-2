@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { taipeiToday } from "@/lib/eip-routine";
 import { humanizeError } from "@/lib/eip-error";
+import { WorkLogItemText, WorkLogSourceBadge } from "@/components/eip/WorkLogSourceBadge";
 
 // 主管檢視／編輯部屬工作日誌。
 // 讀取與編輯的權限由後端 RLS 決定（work_log_read / work_log_update 已允許
@@ -31,9 +32,6 @@ export const Route = createFileRoute("/dashboard/eip/dept-work-log")({
 type Item = {
   text: string; done: boolean; note?: string;
   source?: string; ref_id?: string; link?: string; req?: boolean;
-};
-const SOURCE_LABEL: Record<string, string> = {
-  personal_routine: "個人例行", recurring: "常態工作", task: "任務", meeting_action: "會議決議",
 };
 const arr = (v: unknown): Item[] => (Array.isArray(v) ? (v as Item[]) : []);
 
@@ -245,11 +243,9 @@ function Section({ title, Icon, tone, items, editable, onChange }: {
                 <input value={it.text} onChange={(e) => setItem(i, { text: e.target.value })}
                   className={`flex-1 bg-transparent outline-none border-b border-transparent focus:border-border ${it.done ? "line-through text-muted-foreground" : ""}`} />
               ) : (
-                <span className={`flex-1 ${it.done ? "line-through text-muted-foreground" : ""}`}>{it.text}</span>
+                <WorkLogItemText text={it.text} done={it.done} source={it.source} refId={it.ref_id} />
               )}
-              {it.source && SOURCE_LABEL[it.source] && (
-                <span className="text-[11.5px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{SOURCE_LABEL[it.source]}</span>
-              )}
+              <WorkLogSourceBadge source={it.source} refId={it.ref_id} />
               {it.req && <span className="text-[11.5px] px-1 text-amber-600 shrink-0" title="需填執行內容">需填</span>}
             </div>
             {editable ? (

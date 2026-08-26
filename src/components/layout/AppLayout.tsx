@@ -1,8 +1,10 @@
 import { Outlet, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
 import { AppSidebar } from "./AppSidebar";
 import { DailyReminder } from "@/components/eip/DailyReminder";
+import { ForcePasswordChange } from "@/components/eip/ForcePasswordChange";
 import { Button } from "@/components/ui/button";
 
 export function AppLayout() {
@@ -13,6 +15,31 @@ export function AppLayout() {
     if (!loading && !session) navigate({ to: "/login" });
   }, [loading, session, navigate]);
 
+  // 用的是管理者給的臨時／初始密碼嗎？是就先擋著要求改密碼（旗標在 app_user，
+  // 由後端 eip_admin_reset_password / eip_admin_create_user 設定）。
+  // 查不到或查詢失敗都當作「不用改」放行 —— 這一關不值得把人鎖在門外。
+  const uid = session?.user?.id;
+  const [mustChangePw, setMustChangePw] = useState(false);
+  const [pwChecked, setPwChecked] = useState(false);
+  useEffect(() => {
+    if (!uid) {
+      setMustChangePw(false);
+      setPwChecked(true);
+      return;
+    }
+    let alive = true;
+    setPwChecked(false);
+    void (async () => {
+      const { data, error } = await supabase.rpc("eip_must_change_password");
+      if (!alive) return;
+      setMustChangePw(!error && data === true);
+      setPwChecked(true);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [uid]);
+
   if (loading) {
     return (
       <div className="min-h-screen grid place-items-center text-muted-foreground">
@@ -21,6 +48,24 @@ export function AppLayout() {
     );
   }
   if (!session) return null;
+
+  if (!pwChecked) {
+    return (
+      <div className="min-h-screen grid place-items-center text-muted-foreground">
+        載入中…
+      </div>
+    );
+  }
+
+  if (mustChangePw) {
+    return (
+      <ForcePasswordChange
+        email={profile?.email ?? session.user?.email ?? null}
+        onDone={() => setMustChangePw(false)}
+        onSignOut={() => void signOut()}
+      />
+    );
+  }
 
   if (profile && profile.status !== "active") {
     return (

@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { toggleRoutineItem, type RoutineSection } from "@/lib/eip-routine";
 import { humanizeError } from "@/lib/eip-error";
+import { WorkLogItemText, WorkLogSourceBadge } from "@/components/eip/WorkLogSourceBadge";
 
 // 2026-08-17 依客戶要求隱藏「獨立網址／NAS 連結」欄；網址請直接貼在說明／執行內容欄。
 // 既有連結資料保留於資料庫不刪，要恢復顯示只需把下方旗標改為 true。
@@ -37,9 +38,6 @@ type Item = {
   link?: string;
   /** 是否要求填寫執行內容（來自個人例行範本 require_content） */
   req?: boolean;
-};
-const SOURCE_LABEL: Record<string, string> = {
-  personal_routine: "個人例行", recurring: "常態工作", task: "任務", meeting_action: "會議決議",
 };
 /** 去重鍵：有來源用 source+ref_id，手動新增的項目退回比對文字 */
 const itemKey = (x: Item) => (x.source && x.ref_id ? `${x.source}:${x.ref_id}` : `text:${(x.text ?? "").trim()}`);
@@ -372,11 +370,9 @@ function Section({ title, Icon, tone, items, editable, onChange, onToggleDone }:
                   onChange={(e) => setItem(i, { text: e.target.value })}
                   className={`flex-1 bg-transparent outline-none border-b border-transparent focus:border-border ${it.done ? "line-through text-muted-foreground" : ""}`} />
               ) : (
-                <span className={`flex-1 ${it.done ? "line-through text-muted-foreground" : ""}`}>{it.text}</span>
+                <WorkLogItemText text={it.text} done={it.done} source={it.source} refId={it.ref_id} />
               )}
-              {it.source && SOURCE_LABEL[it.source] && (
-                <span className="text-[11.5px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{SOURCE_LABEL[it.source]}</span>
-              )}
+              <WorkLogSourceBadge source={it.source} refId={it.ref_id} />
               {it.req && <span className="text-[11.5px] px-1 text-amber-600 shrink-0" title="需填執行內容">需填</span>}
               {editable && (
                 <button type="button" onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-muted-foreground/50 hover:text-destructive opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0"><X className="w-3.5 h-3.5" /></button>

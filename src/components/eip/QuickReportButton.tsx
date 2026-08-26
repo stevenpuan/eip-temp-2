@@ -13,11 +13,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { humanizeError } from "@/lib/eip-error";
+import { DateField, TimeField } from "@/components/eip/DateTimeField";
 import { RangeSummary } from "@/components/eip/RangeSummary";
 import {
   summarizeDateRange,
@@ -221,7 +221,7 @@ export function QuickReportButton() {
             {/* 遲到 */}
             <TabsContent value="late" className="space-y-3 pt-2">
               <div>
-                {/* 摘要放欄位「上方」：原生時鐘小視窗往下展開會蓋住欄位，放下面等於看不到 */}
+                {/* 摘要放欄位「上方」，順便顯示總共幾分鐘；選擇器本身是自製的 TimeField */}
                 <div className="flex items-baseline justify-between gap-2">
                   <Label>遲到時段（今日）</Label>
                   <RangeSummary text={summarizeTimeRange(lateStart, lateEnd)} />
@@ -229,26 +229,18 @@ export function QuickReportButton() {
                 <div className="grid grid-cols-2 gap-3 mt-1">
                   <div>
                     <span className="text-xs text-muted-foreground">起</span>
-                    <Input
-                      type="time"
+                    <TimeField
                       value={lateStart}
-                      onChange={(e) => {
-                        const v = e.target.value;
+                      onChange={(v) => {
                         setLateStart(v);
                         // 迄（預計到達）沒填或早於起時就自動跟上，使用者仍可自行改
                         setLateEnd((prev) => syncToTime(v, prev));
                       }}
-                      onBlur={(e) => setLateStart(e.target.value)}
                     />
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">迄（預計到達）</span>
-                    <Input
-                      type="time"
-                      value={lateEnd}
-                      onChange={(e) => setLateEnd(e.target.value)}
-                      onBlur={(e) => setLateEnd(e.target.value)}
-                    />
+                    <TimeField value={lateEnd} onChange={setLateEnd} min={lateStart || undefined} />
                   </div>
                 </div>
               </div>
@@ -286,30 +278,24 @@ export function QuickReportButton() {
                 <div className="grid grid-cols-2 gap-3 mt-1">
                   <div>
                     <span className="text-xs text-muted-foreground">起日</span>
-                    <Input
-                      type="date"
+                    <DateField
                       value={leaveFromDate}
-                      onChange={(e) => {
-                        const v = e.target.value;
+                      onChange={(v) => {
                         setLeaveFromDate(v);
                         // 迄日沒填、或早於新的起日，就自動跟上（其餘不動使用者已選的）
                         setLeaveToDate((prev) => syncToDate(v, prev));
                       }}
-                      onBlur={(e) => setLeaveFromDate(e.target.value)}
                     />
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">迄日</span>
-                    <Input
-                      type="date"
+                    <DateField
                       value={leaveToDate}
                       min={leaveFromDate || undefined}
-                      onChange={(e) => {
-                        const v = e.target.value;
+                      onChange={(v) => {
                         setLeaveToDate(v);
                         setLeaveFromDate((prev) => syncFromDate(v, prev));
                       }}
-                      onBlur={(e) => setLeaveToDate(e.target.value)}
                     />
                   </div>
                 </div>
@@ -322,11 +308,11 @@ export function QuickReportButton() {
                 <div className="grid grid-cols-2 gap-3 mt-1">
                   <div>
                     <span className="text-xs text-muted-foreground">起時</span>
-                    <Input
-                      type="time"
+                    <TimeField
                       value={leaveFromTime}
-                      onChange={(e) => {
-                        const v = e.target.value;
+                      clearable
+                      clearLabel="清除（整日）"
+                      onChange={(v) => {
                         setLeaveFromTime(v);
                         // 跨日的迄時屬於最後一天，不能用起時去推，所以只在同一天才連動
                         setLeaveToTime((prev) =>
@@ -335,16 +321,16 @@ export function QuickReportButton() {
                           }),
                         );
                       }}
-                      onBlur={(e) => setLeaveFromTime(e.target.value)}
                     />
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">迄時</span>
-                    <Input
-                      type="time"
+                    <TimeField
                       value={leaveToTime}
-                      onChange={(e) => setLeaveToTime(e.target.value)}
-                      onBlur={(e) => setLeaveToTime(e.target.value)}
+                      clearable
+                      clearLabel="清除（整日）"
+                      min={leaveFromDate && leaveFromDate === leaveToDate ? leaveFromTime || undefined : undefined}
+                      onChange={setLeaveToTime}
                     />
                   </div>
                 </div>

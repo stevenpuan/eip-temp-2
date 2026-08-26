@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { humanizeError } from "@/lib/eip-error";
+import { DateField, TimeField } from "@/components/eip/DateTimeField";
 import { RangeSummary } from "@/components/eip/RangeSummary";
 import {
   summarizeDateTimeRange,
@@ -264,8 +265,8 @@ export function LeaveRequestDialog({
           </div>
 
           {/* 區間 ＋ 代理人。
-              摘要放在欄位「上方」：原生日曆／時鐘小視窗往下展開會蓋住欄位，
-              放下方使用者得先點掉小視窗才看得到自己選了什麼。 */}
+              日期／時間用自製的 DateField / TimeField（桌機不走原生小視窗，
+              選好的值直接寫在按鈕上）；上方摘要再補「共幾天／幾小時」。 */}
           <div>
             <div className="flex items-baseline justify-between gap-2">
               <Label className="text-xs">請假區間</Label>
@@ -275,53 +276,47 @@ export function LeaveRequestDialog({
               <div>
                 <Label className="text-xs">請假起日 / 時間</Label>
                 <div className="flex gap-2 mt-1">
-                  <Input
-                    type="date"
+                  <DateField
                     value={fromDate}
-                    onChange={(e) => {
-                      const v = e.target.value;
+                    className="h-9 flex-1"
+                    onChange={(v) => {
                       setFromDate(v);
                       // 迄日沒填或早於起日就跟上，不覆蓋使用者已選的較晚迄日
                       setToDate((prev) => syncToDate(v, prev));
                     }}
-                    onBlur={(e) => setFromDate(e.target.value)}
-                    className="h-9"
                   />
-                  <Input
-                    type="time"
+                  <TimeField
                     value={fromTime}
-                    onChange={(e) => {
-                      const v = e.target.value;
+                    clearable
+                    clearLabel="清除（整日）"
+                    className="h-9 w-32 shrink-0"
+                    onChange={(v) => {
                       setFromTime(v);
                       // 跨日時迄時屬於最後一天，不能用起時去推，只在同一天連動
                       setToTime((prev) => syncToTime(v, prev, { sameDay: !!fromDate && fromDate === toDate }));
                     }}
-                    onBlur={(e) => setFromTime(e.target.value)}
-                    className="h-9 w-28"
                   />
                 </div>
               </div>
               <div>
                 <Label className="text-xs">請假迄日 / 時間</Label>
                 <div className="flex gap-2 mt-1">
-                  <Input
-                    type="date"
+                  <DateField
                     value={toDate}
-                    min={fromDate}
-                    onChange={(e) => {
-                      const v = e.target.value;
+                    min={fromDate || undefined}
+                    className="h-9 flex-1"
+                    onChange={(v) => {
                       setToDate(v);
                       setFromDate((prev) => syncFromDate(v, prev));
                     }}
-                    onBlur={(e) => setToDate(e.target.value)}
-                    className="h-9"
                   />
-                  <Input
-                    type="time"
+                  <TimeField
                     value={toTime}
-                    onChange={(e) => setToTime(e.target.value)}
-                    onBlur={(e) => setToTime(e.target.value)}
-                    className="h-9 w-28"
+                    clearable
+                    clearLabel="清除（整日）"
+                    className="h-9 w-32 shrink-0"
+                    min={fromDate && fromDate === toDate ? fromTime || undefined : undefined}
+                    onChange={setToTime}
                   />
                 </div>
               </div>
