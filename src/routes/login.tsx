@@ -123,6 +123,11 @@ function LoginPage() {
                 <p className="text-xs text-muted-foreground text-center leading-relaxed">
                   初次登入帳號與密碼皆為您的員工編號，登入後請至「個人設定」修改密碼。
                 </p>
+                {/* 忘記密碼沒有自助流程（帳號多為虛擬信箱，寄不到重設信），
+                    改為明確指路：請人事課／系統管理者在「帳號管理」重設。 */}
+                <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                  忘記密碼請洽人事課或系統管理者，於「帳號管理」為您重設。
+                </p>
               </form>
             </TabsContent>
             <TabsContent value="register">

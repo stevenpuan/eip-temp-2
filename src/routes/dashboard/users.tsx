@@ -31,6 +31,7 @@ export const Route = createFileRoute("/dashboard/users")({ component: () => (
   ) });
 
 interface CreatedAccount { email: string; password: string }
+interface ResetResult { email: string; name: string | null; password: string; revoked: number }
 
 
 interface RoleRow { id: string; code: string; name: string }
@@ -77,6 +78,8 @@ function UsersPage() {
   const editable = can("users", "edit");
   const deletable = can("users", "delete");
   const canCreateAccount = myRoles.includes("admin") || myRoles.includes("manager");
+  // 重設密碼：與後端 eip_admin_reset_password 同一把尺（帳號管理編輯權，或系統管理者）
+  const canResetPassword = editable || myRoles.includes("admin");
 
 
   const { data: rows = [], isLoading } = useQuery({
@@ -273,6 +276,30 @@ function UsersPage() {
     catch { toast.error("複製失敗,請手動選取"); }
   };
 
+  // ---- 重設密碼 ----
+  // 系統原本沒有任何重設出路：登入頁沒有「忘記密碼」，同仁忘記密碼就只能請人直接改資料庫。
+  // 這裡走 RPC eip_admin_reset_password：產生臨時密碼、強制登出所有裝置、寫 audit_logs。
+  const [resetting, setResetting] = useState<ProfileRow | null>(null);
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [resetDone, setResetDone] = useState<ResetResult | null>(null);
+  const openReset = (row: ProfileRow) => { setResetting(row); setResetDone(null); setResetSubmitting(false); };
+  const closeReset = () => { setResetting(null); setResetDone(null); setResetSubmitting(false); };
+  const confirmReset = async () => {
+    if (!resetting) return;
+    setResetSubmitting(true);
+    const { data, error } = await supabase.rpc("eip_admin_reset_password", { p_user_id: resetting.id });
+    setResetSubmitting(false);
+    if (error) { toast.error(humanizeError(error, "重設密碼")); return; }
+    const d = data as { ok?: boolean; email?: string; name?: string | null; password?: string; revoked_sessions?: number } | null;
+    if (!d?.ok || !d.password || !d.email) { toast.error("重設密碼失敗，請重新整理後再試"); return; }
+    setResetDone({ email: d.email, name: d.name ?? null, password: d.password, revoked: d.revoked_sessions ?? 0 });
+  };
+  const copyResetPassword = async () => {
+    if (!resetDone) return;
+    try { await navigator.clipboard.writeText(resetDone.password); toast.success("已複製臨時密碼"); }
+    catch { toast.error("複製失敗，請手動選取"); }
+  };
+
   // ---- 永久刪除 ----
   const [deleting, setDeleting] = useState<ProfileRow | null>(null);
   const [delConfirm, setDelConfirm] = useState("");
@@ -359,6 +386,9 @@ function UsersPage() {
                     )}
                     {editable && (
                       <Button size="sm" variant="secondary" onClick={() => openEdit(r)}>編輯</Button>
+                    )}
+                    {canResetPassword && r.id !== user?.id && (
+                      <Button size="sm" variant="outline" onClick={() => openReset(r)}>重設密碼</Button>
                     )}
                     {deletable && r.status === "disabled" && (
                       <Button size="sm" variant="destructive" onClick={() => openDelete(r)}>永久刪除</Button>
@@ -585,6 +615,52 @@ function UsersPage() {
               </div>
               <DialogFooter>
                 <Button onClick={closeCreate}>完成</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!resetting} onOpenChange={(o) => { if (!o) closeReset(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{resetDone ? "已重設密碼" : "重設密碼"}</DialogTitle>
+          </DialogHeader>
+          {!resetDone ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                將為 <span className="font-medium text-foreground">{resetting?.full_name ?? resetting?.email}</span> 產生一組新的臨時密碼。
+                原本的密碼立即失效，該帳號在所有裝置上的登入狀態也會被登出。
+              </p>
+              <p className="text-sm text-muted-foreground">
+                新密碼只會顯示這一次，請複製後親自轉交本人，並提醒他登入後到「個人設定」改成自己的密碼。
+              </p>
+              <DialogFooter>
+                <Button variant="outline" onClick={closeReset} disabled={resetSubmitting}>取消</Button>
+                <Button onClick={confirmReset} disabled={resetSubmitting}>
+                  {resetSubmitting ? "重設中…" : "確認重設"}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                臨時密碼僅顯示這一次，請複製轉交{resetDone.name ? `給 ${resetDone.name}` : ""}，並提醒登入後到「個人設定」修改密碼。
+                {resetDone.revoked > 0 ? `原有的 ${resetDone.revoked} 個登入裝置已一併登出。` : ""}
+              </p>
+              <div className="space-y-1">
+                <Label className="text-xs">帳號</Label>
+                <Input value={resetDone.email} readOnly />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">臨時密碼</Label>
+                <div className="flex gap-2">
+                  <Input value={resetDone.password} readOnly className="font-mono" />
+                  <Button type="button" variant="outline" onClick={copyResetPassword}>複製</Button>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button onClick={closeReset}>完成</Button>
               </DialogFooter>
             </div>
           )}
