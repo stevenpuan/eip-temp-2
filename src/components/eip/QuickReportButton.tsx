@@ -113,6 +113,10 @@ export function QuickReportButton() {
     setOtherDetail("");
   };
 
+  // 關閉對話框時一併清空：原本 reset() 只在送出成功後呼叫，
+  // 填到一半的假別／日期／事由會留到下次開啟。
+  const closeDialog = () => { setOpen(false); reset(); };
+
   const tenantId = appUser?.tenant_id ?? DEFAULT_TENANT_ID;
 
   const submitLate = async () => {
@@ -204,7 +208,7 @@ export function QuickReportButton() {
         <Plus className="h-4 w-4" /> 快速回報
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : closeDialog())}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>快速回報</DialogTitle>
@@ -249,7 +253,7 @@ export function QuickReportButton() {
                 <Textarea rows={3} value={lateDetail} onChange={(e) => setLateDetail(e.target.value)} placeholder="(選填)" />
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
+                <Button variant="outline" onClick={closeDialog}>取消</Button>
                 <Button disabled={busy} onClick={submitLate}>送出</Button>
               </DialogFooter>
             </TabsContent>
@@ -350,7 +354,7 @@ export function QuickReportButton() {
                 ，臨時請假可以先送出、事後再補。
               </p>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
+                <Button variant="outline" onClick={closeDialog}>取消</Button>
                 <Button disabled={busy} onClick={submitLeave}>送出</Button>
               </DialogFooter>
             </TabsContent>
@@ -367,7 +371,7 @@ export function QuickReportButton() {
                 />
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
+                <Button variant="outline" onClick={closeDialog}>取消</Button>
                 <Button disabled={busy} onClick={submitOther}>送出</Button>
               </DialogFooter>
             </TabsContent>

@@ -114,7 +114,11 @@ function canManageCollaborators(task: Task, appUser: AppUser | null): boolean {
   }
   return false;
 }
-function canDeleteTask(task: Task, appUser: AppUser | null, can: CanFn, collabMap?: Map<string, Set<string>>): boolean {
+/**
+ * 可否刪除。與 canEditTask 一樣 export 給「我的工作」(my-tasks.tsx) 共用，
+ * 不要在別頁再長出第二套（那頁原本只認負責人）。
+ */
+export function canDeleteTask(task: Task, appUser: AppUser | null, can: CanFn, collabMap?: Map<string, Set<string>>): boolean {
   if (!appUser) return false;
   if (task.owner_id === appUser.id) return true;
   if (task.created_by === appUser.id) return true;

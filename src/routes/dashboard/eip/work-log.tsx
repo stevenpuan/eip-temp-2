@@ -440,17 +440,26 @@ function MyHistory({ meId, activeDate, onPick, onDelete, refreshKey }: { meId: s
   const [q, setQ] = useState("");
   const [st, setSt] = useState("all");
   const [rows, setRows] = useState<any[]>([]);
+  // loadErr：原本沒有接 error，token 過期或 RLS 變動時 data 是 null → rows=[] →
+  // 畫面顯示「此月份沒有任何日誌」，使用者會以為自己的日誌被刪光了。
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   useEffect(() => {
+    // alive：快速切換月份時，先發後到的舊回應不可以蓋掉新月份的結果
+    let alive = true;
     (async () => {
       const [y, m] = month.split("-").map(Number);
       const start = `${month}-01`;
       // eslint-disable-next-line no-restricted-syntax -- Date.UTC 與 toISOString 皆為 UTC、彼此一致，用來算「次月一號」當獨佔上界，不受時區影響
       const end = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
-      const { data } = await supabase.from("work_log")
+      const { data, error } = await supabase.from("work_log")
         .select("id,log_date,status,routine_morning,routine_afternoon,special_items")
         .eq("user_id", meId).gte("log_date", start).lt("log_date", end).order("log_date", { ascending: false });
+      if (!alive) return;
+      if (error) { setLoadErr(humanizeError(error, "載入日誌記錄")); setRows([]); return; }
+      setLoadErr(null);
       setRows(data ?? []);
     })();
+    return () => { alive = false; };
   }, [meId, month, refreshKey]);
   const filtered = rows.filter((r) => (st === "all" || r.status === st) && (!q || txtOf(r).toLowerCase().includes(q.toLowerCase())));
   const hasFilter = st !== "all" || !!q;
@@ -470,7 +479,9 @@ function MyHistory({ meId, activeDate, onPick, onDelete, refreshKey }: { meId: s
           <button onClick={() => { setSt("all"); setQ(""); }} className="text-xs text-primary hover:underline">清除篩選</button>
         )}
       </div>
-      {filtered.length === 0 ? (
+      {loadErr ? (
+        <p className="text-xs text-destructive px-1">載入失敗：{loadErr}（這不代表日誌不存在，請重新整理後再試）</p>
+      ) : filtered.length === 0 ? (
         <p className="text-xs text-muted-foreground px-1">
           {rows.length === 0
             ? "此月份沒有任何日誌。"

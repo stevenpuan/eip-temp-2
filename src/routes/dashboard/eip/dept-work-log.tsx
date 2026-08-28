@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RequirePerm } from "@/components/RequirePerm";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ListChecks, Clock, Zap, RefreshCw, Check, Save, Users, Info } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -69,13 +69,18 @@ function DeptWorkLogPage() {
 
   const selected = members.find((m) => m.user_id === userId) ?? null;
 
+  // reqRef：快速連按下拉切成員（或連點日期）時，先發後到的舊回應會蓋掉新回應，
+  // 造成畫面標題寫著 B、實際載入與存檔的卻是 A 那一筆。每次載入取號，回來時只認最新一號。
+  const reqRef = useRef(0);
   const load = async () => {
+    const seq = ++reqRef.current;
     if (!userId) { setLog(null); setNoLog(false); return; }
     setLoading(true);
     setLoadError(null);
     setNoLog(false);
     const { data, error } = await supabase.from("work_log").select("*")
       .eq("user_id", userId).eq("log_date", date).maybeSingle();
+    if (seq !== reqRef.current) return; // 已經有更新的請求發出，這份結果作廢
     if (error) { setLog(null); setLoadError(humanizeError(error)); setLoading(false); return; }
     if (data) {
       setLog({
@@ -107,9 +112,14 @@ function DeptWorkLogPage() {
       .eq("id", log.id).select("*").maybeSingle();
     setSaving(false);
     if (error) { toast.error(humanizeError(error, "儲存")); return; }
-    if (data) {
-      setLog((l) => (l ? { ...l, updated_at: data.updated_at, status: data.status } : l));
+    // 督導範圍變動、日誌已送出被鎖、或該筆已被本人改掉時，PostgREST 回 0 列而 error 是 null。
+    // 沒有這道檢查就會把「什麼都沒寫進去」報成「已儲存修改」。
+    if (!data) {
+      toast.error("儲存失敗：沒有權限或資料已變更，已重新載入最新內容");
+      void load();
+      return;
     }
+    setLog((l) => (l ? { ...l, updated_at: data.updated_at, status: data.status } : l));
     toast.success("已儲存修改");
   };
 

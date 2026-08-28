@@ -1,7 +1,7 @@
 import { EipUserPending } from "@/components/eip/EipUserPending";
 import { createFileRoute } from "@tanstack/react-router";
 import { RequirePerm } from "@/components/RequirePerm";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -26,7 +26,7 @@ import {
 } from "@/components/eip/TaskSourceBadge";
 import { TodayRoutineCard } from "@/components/eip/TodayRoutineCard";
 import { HandoverInboxCard } from "@/components/eip/HandoverInboxCard";
-import { EditTaskDialog, canEditTask } from "@/routes/dashboard/eip/tasks";
+import { EditTaskDialog, canEditTask, canDeleteTask } from "@/routes/dashboard/eip/tasks";
 import type { Database } from "@/integrations/supabase/types";
 import { humanizeError } from "@/lib/eip-error";
 
@@ -162,17 +162,20 @@ function MyTasksPage() {
     return m;
   }, [statusesQ.data]);
 
+  // 三個分頁的任務都要餵進來源查詢。原本只餵「我負責 + 我協作」，
+  // 於是「我建立但指派給別人」的任務在 sourceMap 裡永遠是 undefined ——
+  // 一套來源篩選就把「我建立的」整片濾掉，來源徽章也不會顯示。
   const allMy = useMemo(() => {
     const seen = new Set<string>();
     const out: Task[] = [];
-    [...(ownedQ.data ?? []), ...(collabQ.data ?? [])].forEach((t) => {
+    [...(ownedQ.data ?? []), ...(collabQ.data ?? []), ...(createdQ.data ?? [])].forEach((t) => {
       if (!seen.has(t.id)) {
         seen.add(t.id);
         out.push(t);
       }
     });
     return out;
-  }, [ownedQ.data, collabQ.data]);
+  }, [ownedQ.data, collabQ.data, createdQ.data]);
 
   const sourceMap = useTaskSources(allMy);
 
@@ -185,6 +188,13 @@ function MyTasksPage() {
     (collabQ.data ?? []).forEach((t) => m.set(t.id, new Set([appUser.id])));
     return m;
   }, [collabQ.data, appUser?.id]);
+
+  // 分頁改成受控：還原完最後一筆之後，「已刪除」的觸發器會消失，但 Tabs 的 value
+  // 仍停在 deleted，畫面只剩一個空框、也沒有分頁可以按回去。
+  const [tab, setTab] = useState("owned");
+  useEffect(() => {
+    if (tab === "deleted" && (deletedQ.data?.length ?? 0) === 0) setTab("owned");
+  }, [tab, deletedQ.data]);
 
   const sortedStatuses = useMemo(
     () => [...(statusesQ.data ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -240,9 +250,10 @@ function MyTasksPage() {
     qc.invalidateQueries({ queryKey: ["eip", "my-collab", appUser.id] });
   };
 
-  // 本人負責且尚未結案(狀態非完成)才可刪除
-  const canDelete = (t: Task) =>
-    t.owner_id === appUser.id && !statusMap.get(t.status_id)?.is_done_state;
+  // 可否刪除與「任務看板」共用同一支判斷（見 tasks.tsx canDeleteTask）。
+  // 原本這頁自己寫 `t.owner_id === appUser.id`，於是同一筆「我建立、指派給別人」
+  // 的任務在任務看板看得到垃圾桶、在這裡看不到 —— 跟先前 canEditTask 同一類的不一致。
+  const canDelete = (t: Task) => canDeleteTask(t, appUser, can, collabMap);
   const handleDelete = async (t: Task) => {
     // 文案更正：這不是永久刪除，會進回收區（原本寫「無法復原」是錯的）
     if (!window.confirm(`確定刪除任務「${t.title}」？會移到回收區，可在「已刪除」分頁還原。`))
@@ -348,7 +359,7 @@ function MyTasksPage() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="owned">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="owned">我負責 ({owned.length})</TabsTrigger>
           <TabsTrigger value="collab">我協作 ({collab.length})</TabsTrigger>

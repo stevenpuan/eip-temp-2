@@ -138,9 +138,14 @@ function AnnouncementsPage() {
   const doDelete = async () => {
     if (!deleting) return;
     setDeleteBusy(true);
-    // 先清相關 target / read,避免 FK 阻擋
-    await supabase.from("announcement_target").delete().eq("announcement_id", deleting.id);
-    await supabase.from("announcement_read").delete().eq("announcement_id", deleting.id);
+    // 先清相關 target / read,避免 FK 阻擋。這兩句失敗就不要往下走，
+    // 否則下一句會撞 FK,使用者只會看到難懂的 23503。
+    const { error: tErr } = await supabase
+      .from("announcement_target").delete().eq("announcement_id", deleting.id);
+    if (tErr) { setDeleteBusy(false); toast.error(humanizeError(tErr, "刪除")); return; }
+    const { error: rErr } = await supabase
+      .from("announcement_read").delete().eq("announcement_id", deleting.id);
+    if (rErr) { setDeleteBusy(false); toast.error(humanizeError(rErr, "刪除")); return; }
     const { error } = await supabase.from("announcement").delete().eq("id", deleting.id);
     setDeleteBusy(false);
     if (error) { toast.error(humanizeError(error, "刪除")); return; }
@@ -291,6 +296,12 @@ function AnnouncementFormDialog({
 
   const submit = async () => {
     if (!title.trim() || !body.trim()) return toast.error("請輸入標題與內文");
+    // 選了「指定部門／指定人員」卻沒勾任何對象時，後端 eip_can_see_announcement()
+    // 找不到 target 就誰都看不到 —— 等於發出一則沒人收得到、也不會產生通知的公告。
+    if (audience === "department" && targetDepts.length === 0)
+      return toast.error("請至少選擇一個部門，否則這則公告沒有人看得到");
+    if (audience === "users" && targetUsers.length === 0)
+      return toast.error("請至少選擇一位收件人，否則這則公告沒有人看得到");
     setBusy(true);
     try {
       let aid: string;
@@ -307,8 +318,11 @@ function AnnouncementFormDialog({
         const { error } = await supabase.from("announcement").update(payload).eq("id", announcement!.id);
         if (error) throw error;
         aid = announcement!.id;
-        // 重設對象
-        await supabase.from("announcement_target").delete().eq("announcement_id", aid);
+        // 重設對象。這句被擋掉時若照插新對象，會變成「舊對象＋新對象」並存
+        // （公告仍發給已經移除的部門／人員），所以一定要接錯誤。
+        const { error: dErr } = await supabase
+          .from("announcement_target").delete().eq("announcement_id", aid);
+        if (dErr) throw dErr;
       } else {
         const { data: created, error } = await supabase.from("announcement").insert({
           tenant_id: appUser.tenant_id ?? DEFAULT_TENANT_ID,

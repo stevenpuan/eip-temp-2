@@ -44,16 +44,16 @@ type Draft = { key: string; title: string; assigneeId: string; url: string };
 /** 本地日期字串；toISOString() 在 UTC+8 會退回前一天，不能用 */
 const todayLocal = () => new Date().toLocaleDateString("sv-SE");
 
-/** 把「日期 + 時間」組成帶時區位移的 timestamptz，避免被當成 UTC */
+/**
+ * 把「日期 + 時間」組成帶時區的 timestamptz。
+ * - 時間欄位是 clearable（「清除（整日）」），空字串代表整日 → 由呼叫端帶預設值，
+ *   這裡再擋一次不合法格式，避免組出 `2026-08-28T:00-NaN:NaN` 撞 22007。
+ * - 固定 +08:00（台北無日光節約），與 QuickReportButton / quick-reports 的 ts() 一致；
+ *   原本用 getTimezoneOffset() 會讓境外或機器時區設錯的同仁送出不同的時間點。
+ */
 function stamp(date: string, time: string) {
-  const d = new Date(`${date}T${time}:00`);
-  const p = (n: number) => String(n).padStart(2, "0");
-  const offMin = -d.getTimezoneOffset();
-  const abs = Math.abs(offMin);
-  return (
-    `${date}T${time}:00` +
-    `${offMin >= 0 ? "+" : "-"}${p(Math.floor(abs / 60))}:${p(abs % 60)}`
-  );
+  const t = /^\d{1,2}:\d{2}$/.test(time) ? time.padStart(5, "0") : "00:00";
+  return `${date}T${t}:00+08:00`;
 }
 
 let seq = 0;
@@ -156,7 +156,9 @@ export function LeaveRequestDialog({
     if (!leaveType) return toast.error("請選擇假別");
     if (!fromDate || !toDate) return toast.error("請選擇請假區間");
     if (toDate < fromDate) return toast.error("迄日不可早於起日");
-    if (fromDate === toDate && toTime <= fromTime) return toast.error("同一天的迄時要晚於起時");
+    // 兩邊都有填時間才比較；任一邊按了「清除（整日）」就視為整日，不做起訖比較
+    if (fromDate === toDate && fromTime && toTime && toTime <= fromTime)
+      return toast.error("同一天的迄時要晚於起時");
     // 代理人是選填：沒指定就整張單先成立，之後在「交接代辦」補。這裡刻意不擋。
 
     // 代辦區塊收起時一律不送代辦，即使之前展開過打了字（那視同放棄）
@@ -177,8 +179,9 @@ export function LeaveRequestDialog({
         type: "leave",
         report_date: fromDate,
         leave_type: leaveType,
-        leave_from: stamp(fromDate, fromTime),
-        leave_to: stamp(toDate, toTime),
+        // 清空時間＝整日，補 00:00 / 23:59（與 QuickReportButton 的請假送出一致）
+        leave_from: stamp(fromDate, fromTime || "00:00"),
+        leave_to: stamp(toDate, toTime || "23:59"),
         // 未指定代理人就寫 null（DB 允許），不要寫 sentinel 字串
         deputy_id: deputyId === NO_ASSIGNEE ? null : deputyId,
         submitted_at: new Date().toISOString(),
@@ -234,7 +237,13 @@ export function LeaveRequestDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && !busy && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        // 關閉時一併 reset()：原本只有送出成功才清空，取消後再開會看到上一次填到一半的內容
+        if (!o && !busy) { reset(); onClose(); }
+      }}
+    >
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>請假申請</DialogTitle>
@@ -442,7 +451,7 @@ export function LeaveRequestDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={busy}>
+          <Button variant="outline" onClick={() => { reset(); onClose(); }} disabled={busy}>
             取消
           </Button>
           <Button onClick={() => void submit()} disabled={busy}>

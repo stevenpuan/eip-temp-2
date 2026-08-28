@@ -204,6 +204,8 @@ function PhoneOrderPage() {
   // 儲存前檢查：日期需在月份內；若當天已有紀錄，跳出確認再覆蓋
   const handleSaveDaily = () => {
     if (locked || saveDaily.isPending) return;
+    // 當日紀錄還沒載完就存，exists 會是 false → 不跳確認直接覆蓋掉當天原本的資料
+    if (myDailyQ.isLoading) { toast.error("資料還在載入，請稍候再存"); return; }
     if (!entryDate) { toast.error("請選擇日期"); return; }
     if (entryDate < monthStart || entryDate > monthEnd) {
       toast.error(`日期需在所選月份（${monthValue}）內`);
@@ -232,6 +234,12 @@ function PhoneOrderPage() {
   });
 
   const [workDaysInput, setWorkDaysInput] = useState<string>("");
+  // 切換月份時把輸入框換成「該月已存的值」。少了這段，在 8 月填了 22 再切到 7 月，
+  // 框裡仍顯示 22，按下儲存就把 7 月的上班天數改成 22，整月平均分數全錯。
+  useEffect(() => {
+    setWorkDaysInput(myWorkDaysQ.data != null ? String(myWorkDaysQ.data) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ymFirst, myWorkDaysQ.data]);
   const saveWorkDays = useMutation({
     mutationFn: async () => {
       if (!appUser?.id) throw new Error("尚未載入使用者");
@@ -322,8 +330,14 @@ function PhoneOrderPage() {
         p_year: year, p_month: month,
       });
       if (error) throw error;
-      const rows = (data ?? []) as ErrorRow[];
-      if (!rows.length) { toast.info("本月沒有失誤紀錄"); return; }
+      // 與「匯出月報」「下載每日明細表」一致，套用上方的部門篩選；
+      // 原本這顆不吃 deptFilter，人資篩了部門仍會拿到全公司的失誤明細。
+      // eip_phone_order_error_detail 只回 department_name，所以改用已套篩選的
+      // summaryRows 取人員白名單來過濾（同名部門也不會誤判）。
+      const all = (data ?? []) as ErrorRow[];
+      const allowed = new Set(summaryRows.map((r) => r.user_id));
+      const rows = deptFilter === "all" ? all : all.filter((r) => allowed.has(r.user_id));
+      if (!rows.length) { toast.info(deptFilter === "all" ? "本月沒有失誤紀錄" : "所選部門本月沒有失誤紀錄"); return; }
       exportToExcel({
         filename: `電話訂單失誤明細_${monthValue}`,
         sheetName: "失誤明細",

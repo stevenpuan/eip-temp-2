@@ -143,9 +143,17 @@ function UsersPage() {
   const setStatus = async (id: string, status: string) => {
     const { error } = await supabase.from("profiles").update({ status }).eq("id", id);
     if (error) { toast.error(humanizeError(error, "更新狀態")); return; }
-    // 同步 app_user.status：active → active；其他 → inactive
+    // 同步 app_user.status：active → active；其他 → inactive。
+    // 這句一定要接錯誤：所有人員下拉（任務負責人、代理人、對接人員、公告指定人員）
+    // 讀的都是 app_user.status='active'，同步失敗卻報「已更新」，離職同仁會繼續出現在選單裡。
     const appStatus = status === "active" ? "active" : "inactive";
-    await supabase.from("app_user").update({ status: appStatus }).eq("id", id);
+    const { error: auErr } = await supabase.from("app_user").update({ status: appStatus }).eq("id", id);
+    if (auErr) {
+      toast.error(`帳號狀態只更新了一半：${humanizeError(auErr, "同步人員名冊")}。請重試，否則此人仍會出現在各人員選單。`);
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["app_users"] });
+      return;
+    }
     if (status === "active") {
       const { data: existing } = await supabase.from("user_roles").select("role_id").eq("user_id", id);
       if (!existing || existing.length === 0) {

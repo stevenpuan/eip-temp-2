@@ -765,13 +765,19 @@ function SupervisorDialog({
       const { error } = await supabase.from("eip_dept_supervisor").insert(
         add.map((uid) => ({ department_id: dept.id, user_id: uid, created_by: createdBy })),
       );
-      if (error) { setSaving(false); toast.error(humanizeError(error, "新增督導")); return; }
+      if (error) {
+        setSaving(false);
+        // 前面的移除已經生效了，這裡直接 return 會讓畫面上的督導名單停在舊資料。
+        toast.error(`${humanizeError(error, "新增督導")}（移除的部分已生效）`);
+        onSaved();
+        return;
+      }
     }
     setSaving(false);
     toast.success("已更新部門督導");
 
     // 角色不足的人：問要不要一併設為部門主管，否則他看不到部門日誌／彙總的選單
-    const needPromote = ids.filter((uid) => {
+    const needPromote = add.filter((uid) => {
       const u = users.find((x) => x.id === uid);
       return u && u.role !== "dept_manager" && u.role !== "company_admin";
     });
@@ -794,9 +800,13 @@ function SupervisorDialog({
     }
     let failed = 0;
     for (const uid of targets) {
-      const { data: mine } = await supabase.from("user_roles").select("role_id").eq("user_id", uid);
+      // eip_set_user_roles 是「整組覆寫」。這裡讀不到現有角色就絕對不能往下送，
+      // 否則清單只剩「部門主管」一個，該員原有的其他角色會被清光。
+      const { data: mine, error: me } = await supabase
+        .from("user_roles").select("role_id").eq("user_id", uid);
+      if (me || !mine) { failed += 1; continue; }
       const ridList = Array.from(
-        new Set([...((mine ?? []) as { role_id: string }[]).map((r) => r.role_id), dm.id]),
+        new Set([...(mine as { role_id: string }[]).map((r) => r.role_id), dm.id]),
       );
       const { error } = await supabase.rpc("eip_set_user_roles", { p_user_id: uid, p_role_ids: ridList });
       if (error) failed += 1;
