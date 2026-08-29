@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
+import { useEipUser } from "@/lib/eip-user";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/dashboard/profile")({ component: Page });
 
 function Page() {
   const { profile, user, roleNames, refresh } = useAuth();
+  const { reload: reloadEipUser } = useEipUser();
   const [fullName, setFullName] = useState("");
   const [pw, setPw] = useState("");
 
@@ -46,8 +48,11 @@ function Page() {
       await refresh();
       return;
     }
+    // refresh() 只重載 profiles + user_roles，不碰 app_user；而全站顯示姓名讀的是
+    // app_user.name，所以這裡要一起 reload，否則側欄與任務上的名字要整頁重新載入才會變，
+    // 使用者會以為同步失敗。
+    await Promise.all([refresh(), reloadEipUser()]);
     toast.success("已更新個人資料");
-    await refresh();
   };
 
   const changePassword = async () => {

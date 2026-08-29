@@ -99,9 +99,11 @@ function LoginPage() {
       return;
     }
     if (invite && !signUpData.session) {
-      // 需要驗證信箱時沒有 session，邀請碼原本會被靜默丟掉、之後無處可用。
+      // 需要驗證信箱時沒有 session，這支 redeem_invitation 送不出去。
+      // 系統目前沒有「登入後補啟用」的機制（handle_new_user 也不讀 invite_code），
+      // 所以這裡只能誠實告知要走人工審核，不可以承諾會自動啟用。
       setBusy(false);
-      toast.message("註冊成功！請先完成信箱驗證再登入，登入後邀請碼會自動啟用。");
+      toast.message("註冊成功！請先完成信箱驗證，並請管理員為你啟用帳號（這次的邀請碼不會自動生效）。");
       return;
     }
     setBusy(false);

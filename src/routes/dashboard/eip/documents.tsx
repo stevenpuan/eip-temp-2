@@ -698,8 +698,16 @@ function DocDetailDialog({
       note: `還原自 v${v.version_no}`,
     });
     if (vErr) {
-      // 版本沒插成功就把版號改回去，不要讓 current_version 指向不存在的版本
-      await supabase.from("eip_document").update({ current_version: oldVer }).eq("id", doc.id);
+      // 版本沒插成功就把版號改回去，不要讓 current_version 指向不存在的版本。
+      // 補償本身也可能失敗（多半跟 vErr 同一個網路狀況），失敗就必須明講，
+      // 否則這份文件會停在「版號指向不存在的版本」＝編輯器打開是空白的。
+      const { data: back, error: backErr } = await supabase
+        .from("eip_document").update({ current_version: oldVer }).eq("id", doc.id).select("id");
+      if (backErr || !back?.length) {
+        return toast.error(
+          `還原失敗，且版號沒有復原（目前指向不存在的 v${newVer}）。請重新整理後再試一次，若編輯器打開是空白的請聯絡管理員。`,
+        );
+      }
       return toast.error(humanizeError(vErr, "還原版本"));
     }
     toast.success(`已還原為 v${v.version_no}(產生 v${newVer})`);
@@ -993,6 +1001,9 @@ function DocEditorDialog({
         // 防止用空白覆蓋：現行版本內文尚未載入完成或載入失敗時，不可儲存新版本。
         if (curVerQ.isLoading) throw new Error("現行版本內容尚未載入完成，請稍候再儲存");
         if (curVerQ.isError) throw new Error("現行版本內容載入失敗，為避免覆蓋成空白已中止儲存，請關閉後重新開啟編輯");
+        // 查得到但是 0 列（current_version 指到一個不存在的版本）也要擋：
+        // 這時編輯器是空白的，直接存下去等於把整份文件覆蓋成空的。
+        if (!curVerQ.data) throw new Error("找不到目前版號對應的版本內容（版號可能已錯亂），為避免覆蓋成空白已中止儲存，請聯絡管理員");
         const att = await uploadIfNeeded(doc.id);
         const { data: dRows, error: dErr } = await supabase.from("eip_document")
           .update({

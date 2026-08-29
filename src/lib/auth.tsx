@@ -73,7 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       // 不論成功或失敗都要放行，否則整個 app 會永遠停在「載入中…」。
       // 失敗的情況下 perms 是空的，使用者會被導回我的任務 —— 這比白畫面好，
-      // 而且 loadUserData 內每一段查詢失敗都只影響對應的那一段。
+      // 但一定要出聲（上面的 catch 會 toast），不要讓人以為自己的權限被拿掉了。
+      // 註：profiles 那一段失敗只影響 profile 本身，不影響 roles / perms。
       setPermsLoaded(true);
     }
   };
@@ -84,7 +85,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
       supabase.from("user_roles").select("role_id, roles(code,name)").eq("user_id", uid),
     ]);
-    if (pErr) throw pErr;
+    // profiles 失敗只影響顯示用的 profile（名字會退成 email），不要讓它把整組權限一起帶走；
+    // 真正會讓 perms 變空的是下面的 user_roles 與兩張權限表，那些才 throw。
+    if (pErr) console.error("[auth] profiles 載入失敗", pErr);
     if (urErr) throw urErr;
     setProfile((prof as Profile) ?? null);
 

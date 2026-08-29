@@ -475,16 +475,18 @@ function MilestonesSection({ projectId, tenantId, milestones, canEdit, highlight
     if (!data?.length) { toast.error("更新失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); refetch(); return; }
     refetch();
   };
-  const setProgress = async (m: Milestone, v: number) => {
+  /** 回傳是否真的寫進去了，讓輸入框在失敗時可以把顯示值復原 */
+  const setProgress = async (m: Milestone, v: number): Promise<boolean> => {
     // 夾在 0–100：DB 有 milestone_progress_check，超出範圍會回 23514
-    if (!Number.isFinite(v)) return;
+    if (!Number.isFinite(v)) return false;
     const val = Math.max(0, Math.min(100, Math.round(v)));
-    if (val === (m.progress ?? 0)) return;
+    if (val === (m.progress ?? 0)) return true;
     const { data, error } = await supabase.from("milestone")
       .update({ progress: val }).eq("id", m.id).select("id");
-    if (error) { toast.error(humanizeError(error, "更新進度")); return; }
-    if (!data?.length) { toast.error("更新失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); refetch(); return; }
+    if (error) { toast.error(humanizeError(error, "更新進度")); return false; }
+    if (!data?.length) { toast.error("更新失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); refetch(); return false; }
     refetch();
+    return true;
   };
   const remove = async (m: Milestone) => {
     const { data, error } = await supabase.from("milestone").delete().eq("id", m.id).select("id");
@@ -526,7 +528,13 @@ function MilestonesSection({ projectId, tenantId, milestones, canEdit, highlight
                         key={`${m.id}-${m.progress ?? 0}`}
                         /* 改成 onBlur：原本 onChange 每敲一鍵就寫一次庫（輸入 50 會先寫 5 再寫 50），
                            而且把欄位清空時 Number("") === 0 會直接把進度歸零。 */
-                        onBlur={(e) => { const raw = e.target.value.trim(); if (raw !== "") void setProgress(m, Number(raw)); }}
+                        onBlur={(e) => {
+                          const raw = e.target.value.trim();
+                          // 清空或寫入沒成功時，key 不會變 → 輸入框會一直停在空白／錯誤值，
+                          // 旁邊卻顯示舊的百分比。這裡手動把顯示值復原。
+                          if (raw === "") { e.target.value = String(m.progress ?? 0); return; }
+                          void setProgress(m, Number(raw)).catch(() => { e.target.value = String(m.progress ?? 0); });
+                        }}
                         className="w-20 h-8" />
                       <button onClick={() => remove(m)} className="text-muted-foreground hover:text-destructive p-1" aria-label="刪除"><Trash2 className="w-3.5 h-3.5" /></button>
                     </>

@@ -698,12 +698,14 @@ function ActionItemsSection({
   const save = async () => {
     if (!content.trim() || !appUser) return;
     if (editing) {
-      const { error } = await supabase.from("meeting_action_item").update({
+      const { data, error } = await supabase.from("meeting_action_item").update({
         content: content.trim(),
         owner_id: owner === "none" ? null : owner,
         due_date: due || null,
-      }).eq("id", editing.id);
+      }).eq("id", editing.id).select("id");
       if (error) return toast.error(humanizeError(error, "更新行動項"));
+      // 0 列＝被 RLS 擋掉（error 為 null）。原本會 reset+refresh，改動靜靜消失。
+      if (!data?.length) return toast.error("更新失敗：沒有權限編輯這場會議的決議事項（僅管理者與部門主管）");
     } else {
       const { error } = await supabase.from("meeting_action_item").insert({
         tenant_id: meeting.tenant_id,
@@ -719,8 +721,11 @@ function ActionItemsSection({
   };
 
   const remove = async (id: string) => {
-    const { error } = await supabase.from("meeting_action_item").delete().eq("id", id);
-    if (error) toast.error(humanizeError(error, "刪除行動項")); else refresh();
+    const { data, error } = await supabase
+      .from("meeting_action_item").delete().eq("id", id).select("id");
+    if (error) { toast.error(humanizeError(error, "刪除行動項")); return; }
+    if (!data?.length) { toast.error("刪除失敗：沒有權限編輯這場會議的決議事項（僅管理者與部門主管）"); return; }
+    refresh();
   };
 
   const setStatus = async (id: string, status: ActionStatus) => {
