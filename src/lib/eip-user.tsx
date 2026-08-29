@@ -84,3 +84,9 @@ export function useEipUser() {
   return ctx;
 }
 
+// EipUserProvider 只包住 /dashboard/eip 子樹。像 /dashboard/profile 這種在子樹外面的頁面
+// 需要「有就用、沒有就算了」的取法，直接用 useEipUser() 會整頁崩掉。
+export function useEipUserOptional() {
+  return useContext(EipUserContext);
+}
+

@@ -9,63 +9,65 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
-import { Route as DashboardUsersRouteImport } from './routes/dashboard/users'
-import { Route as DashboardUserManualRouteImport } from './routes/dashboard/user-manual'
-import { Route as DashboardSystemDocsRouteImport } from './routes/dashboard/system-docs'
-import { Route as DashboardSystemConfigRouteImport } from './routes/dashboard/system-config'
-import { Route as DashboardRolePermissionsRouteImport } from './routes/dashboard/role-permissions'
-import { Route as DashboardProfileRouteImport } from './routes/dashboard/profile'
-import { Route as DashboardOrgRouteImport } from './routes/dashboard/org'
-import { Route as DashboardNotificationsRouteImport } from './routes/dashboard/notifications'
-import { Route as DashboardNotificationSettingsRouteImport } from './routes/dashboard/notification-settings'
-import { Route as DashboardMenuManagementRouteImport } from './routes/dashboard/menu-management'
-import { Route as DashboardLookupsRouteImport } from './routes/dashboard/lookups'
-import { Route as DashboardIssueReportsRouteImport } from './routes/dashboard/issue-reports'
-import { Route as DashboardFeatureRequestsRouteImport } from './routes/dashboard/feature-requests'
-import { Route as DashboardErrorLogsRouteImport } from './routes/dashboard/error-logs'
-import { Route as DashboardEipRouteImport } from './routes/dashboard/eip'
-import { Route as DashboardDevTodosRouteImport } from './routes/dashboard/dev-todos'
-import { Route as DashboardDevHistoryRouteImport } from './routes/dashboard/dev-history'
-import { Route as DashboardDeptViewGrantsRouteImport } from './routes/dashboard/dept-view-grants'
-import { Route as DashboardAuditLogsRouteImport } from './routes/dashboard/audit-logs'
-import { Route as DashboardAssistantIntentRouteImport } from './routes/dashboard/assistant-intent'
 import { Route as DashboardActivityLogsRouteImport } from './routes/dashboard/activity-logs'
-import { Route as DashboardEipWorkLogRouteImport } from './routes/dashboard/eip/work-log'
-import { Route as DashboardEipTasksRouteImport } from './routes/dashboard/eip/tasks'
-import { Route as DashboardEipReportsRouteImport } from './routes/dashboard/eip/reports'
-import { Route as DashboardEipRecurringRouteImport } from './routes/dashboard/eip/recurring'
-import { Route as DashboardEipQuickReportsRouteImport } from './routes/dashboard/eip/quick-reports'
-import { Route as DashboardEipProjectsRouteImport } from './routes/dashboard/eip/projects'
-import { Route as DashboardEipPersonalRoutineRouteImport } from './routes/dashboard/eip/personal-routine'
-import { Route as DashboardEipPerformanceRouteImport } from './routes/dashboard/eip/performance'
-import { Route as DashboardEipMyTasksRouteImport } from './routes/dashboard/eip/my-tasks'
-import { Route as DashboardEipMembersRouteImport } from './routes/dashboard/eip/members'
-import { Route as DashboardEipMeetingsRouteImport } from './routes/dashboard/eip/meetings'
-import { Route as DashboardEipHandoverRouteImport } from './routes/dashboard/eip/handover'
-import { Route as DashboardEipFeatureRequestsRouteImport } from './routes/dashboard/eip/feature-requests'
-import { Route as DashboardEipDocumentsRouteImport } from './routes/dashboard/eip/documents'
-import { Route as DashboardEipDeptRoutineRouteImport } from './routes/dashboard/eip/dept-routine'
-import { Route as DashboardEipChangelogRouteImport } from './routes/dashboard/eip/changelog'
-import { Route as DashboardEipCalendarRouteImport } from './routes/dashboard/eip/calendar'
-import { Route as DashboardEipAssistantRouteImport } from './routes/dashboard/eip/assistant'
-import { Route as DashboardEipAnomaliesRouteImport } from './routes/dashboard/eip/anomalies'
+import { Route as DashboardAssistantIntentRouteImport } from './routes/dashboard/assistant-intent'
+import { Route as DashboardAuditLogsRouteImport } from './routes/dashboard/audit-logs'
+import { Route as DashboardDeptViewGrantsRouteImport } from './routes/dashboard/dept-view-grants'
+import { Route as DashboardDevHistoryRouteImport } from './routes/dashboard/dev-history'
+import { Route as DashboardDevTodosRouteImport } from './routes/dashboard/dev-todos'
+import { Route as DashboardEipRouteImport } from './routes/dashboard/eip'
+import { Route as DashboardErrorLogsRouteImport } from './routes/dashboard/error-logs'
+import { Route as DashboardFeatureRequestsRouteImport } from './routes/dashboard/feature-requests'
+import { Route as DashboardIssueReportsRouteImport } from './routes/dashboard/issue-reports'
+import { Route as DashboardLookupsRouteImport } from './routes/dashboard/lookups'
+import { Route as DashboardMenuManagementRouteImport } from './routes/dashboard/menu-management'
+import { Route as DashboardNotificationSettingsRouteImport } from './routes/dashboard/notification-settings'
+import { Route as DashboardNotificationsRouteImport } from './routes/dashboard/notifications'
+import { Route as DashboardOrgRouteImport } from './routes/dashboard/org'
+import { Route as DashboardProfileRouteImport } from './routes/dashboard/profile'
+import { Route as DashboardRolePermissionsRouteImport } from './routes/dashboard/role-permissions'
+import { Route as DashboardSystemConfigRouteImport } from './routes/dashboard/system-config'
+import { Route as DashboardSystemDocsRouteImport } from './routes/dashboard/system-docs'
+import { Route as DashboardUserManualRouteImport } from './routes/dashboard/user-manual'
+import { Route as DashboardUsersRouteImport } from './routes/dashboard/users'
 import { Route as DashboardEipAnnouncementsRouteImport } from './routes/dashboard/eip/announcements'
-import { Route as DashboardEipProjectsIndexRouteImport } from './routes/dashboard/eip/projects.index'
-import { Route as DashboardEipMeetingsIndexRouteImport } from './routes/dashboard/eip/meetings.index'
+import { Route as DashboardEipAnomaliesRouteImport } from './routes/dashboard/eip/anomalies'
+import { Route as DashboardEipAssistantRouteImport } from './routes/dashboard/eip/assistant'
+import { Route as DashboardEipCalendarRouteImport } from './routes/dashboard/eip/calendar'
+import { Route as DashboardEipChangelogRouteImport } from './routes/dashboard/eip/changelog'
+import { Route as DashboardEipDeptRoutineRouteImport } from './routes/dashboard/eip/dept-routine'
+import { Route as DashboardEipDeptWorkLogRouteImport } from './routes/dashboard/eip/dept-work-log'
+import { Route as DashboardEipDocumentsRouteImport } from './routes/dashboard/eip/documents'
+import { Route as DashboardEipFeatureRequestsRouteImport } from './routes/dashboard/eip/feature-requests'
+import { Route as DashboardEipHandoverRouteImport } from './routes/dashboard/eip/handover'
+import { Route as DashboardEipMeetingsRouteImport } from './routes/dashboard/eip/meetings'
+import { Route as DashboardEipMembersRouteImport } from './routes/dashboard/eip/members'
+import { Route as DashboardEipMyTasksRouteImport } from './routes/dashboard/eip/my-tasks'
+import { Route as DashboardEipPerformanceRouteImport } from './routes/dashboard/eip/performance'
+import { Route as DashboardEipPersonalRoutineRouteImport } from './routes/dashboard/eip/personal-routine'
+import { Route as DashboardEipPhoneOrderRouteImport } from './routes/dashboard/eip/phone-order'
+import { Route as DashboardEipProjectsRouteImport } from './routes/dashboard/eip/projects'
+import { Route as DashboardEipQuickReportsRouteImport } from './routes/dashboard/eip/quick-reports'
+import { Route as DashboardEipRecurringRouteImport } from './routes/dashboard/eip/recurring'
+import { Route as DashboardEipReportsRouteImport } from './routes/dashboard/eip/reports'
+import { Route as DashboardEipTasksRouteImport } from './routes/dashboard/eip/tasks'
+import { Route as DashboardEipWorkLogRouteImport } from './routes/dashboard/eip/work-log'
 import { Route as DashboardEipFeatureRequestsIndexRouteImport } from './routes/dashboard/eip/feature-requests.index'
-import { Route as DashboardEipProjectsIdRouteImport } from './routes/dashboard/eip/projects.$id'
-import { Route as DashboardEipMeetingsIdRouteImport } from './routes/dashboard/eip/meetings.$id'
-import { Route as DashboardEipFeatureRequestsNewRouteImport } from './routes/dashboard/eip/feature-requests.new'
 import { Route as DashboardEipFeatureRequestsIdRouteImport } from './routes/dashboard/eip/feature-requests.$id'
+import { Route as DashboardEipFeatureRequestsNewRouteImport } from './routes/dashboard/eip/feature-requests.new'
+import { Route as DashboardEipMeetingsIndexRouteImport } from './routes/dashboard/eip/meetings.index'
+import { Route as DashboardEipMeetingsIdRouteImport } from './routes/dashboard/eip/meetings.$id'
+import { Route as DashboardEipProjectsIndexRouteImport } from './routes/dashboard/eip/projects.index'
+import { Route as DashboardEipProjectsIdRouteImport } from './routes/dashboard/eip/projects.$id'
 import { Route as DashboardEipFeatureRequestsIdEditRouteImport } from './routes/dashboard/eip/feature-requests.$id.edit'
 
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -73,9 +75,9 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
@@ -83,102 +85,9 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
   path: '/',
   getParentRoute: () => DashboardRoute,
 } as any)
-const DashboardUsersRoute = DashboardUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardUserManualRoute = DashboardUserManualRouteImport.update({
-  id: '/user-manual',
-  path: '/user-manual',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardSystemDocsRoute = DashboardSystemDocsRouteImport.update({
-  id: '/system-docs',
-  path: '/system-docs',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardSystemConfigRoute = DashboardSystemConfigRouteImport.update({
-  id: '/system-config',
-  path: '/system-config',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardRolePermissionsRoute =
-  DashboardRolePermissionsRouteImport.update({
-    id: '/role-permissions',
-    path: '/role-permissions',
-    getParentRoute: () => DashboardRoute,
-  } as any)
-const DashboardProfileRoute = DashboardProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardOrgRoute = DashboardOrgRouteImport.update({
-  id: '/org',
-  path: '/org',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardNotificationsRoute = DashboardNotificationsRouteImport.update({
-  id: '/notifications',
-  path: '/notifications',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardNotificationSettingsRoute =
-  DashboardNotificationSettingsRouteImport.update({
-    id: '/notification-settings',
-    path: '/notification-settings',
-    getParentRoute: () => DashboardRoute,
-  } as any)
-const DashboardMenuManagementRoute = DashboardMenuManagementRouteImport.update({
-  id: '/menu-management',
-  path: '/menu-management',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardLookupsRoute = DashboardLookupsRouteImport.update({
-  id: '/lookups',
-  path: '/lookups',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardIssueReportsRoute = DashboardIssueReportsRouteImport.update({
-  id: '/issue-reports',
-  path: '/issue-reports',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardFeatureRequestsRoute =
-  DashboardFeatureRequestsRouteImport.update({
-    id: '/feature-requests',
-    path: '/feature-requests',
-    getParentRoute: () => DashboardRoute,
-  } as any)
-const DashboardErrorLogsRoute = DashboardErrorLogsRouteImport.update({
-  id: '/error-logs',
-  path: '/error-logs',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardEipRoute = DashboardEipRouteImport.update({
-  id: '/eip',
-  path: '/eip',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardDevTodosRoute = DashboardDevTodosRouteImport.update({
-  id: '/dev-todos',
-  path: '/dev-todos',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardDevHistoryRoute = DashboardDevHistoryRouteImport.update({
-  id: '/dev-history',
-  path: '/dev-history',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardDeptViewGrantsRoute = DashboardDeptViewGrantsRouteImport.update({
-  id: '/dept-view-grants',
-  path: '/dept-view-grants',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardAuditLogsRoute = DashboardAuditLogsRouteImport.update({
-  id: '/audit-logs',
-  path: '/audit-logs',
+const DashboardActivityLogsRoute = DashboardActivityLogsRouteImport.update({
+  id: '/activity-logs',
+  path: '/activity-logs',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardAssistantIntentRoute =
@@ -187,71 +96,143 @@ const DashboardAssistantIntentRoute =
     path: '/assistant-intent',
     getParentRoute: () => DashboardRoute,
   } as any)
-const DashboardActivityLogsRoute = DashboardActivityLogsRouteImport.update({
-  id: '/activity-logs',
-  path: '/activity-logs',
+const DashboardAuditLogsRoute = DashboardAuditLogsRouteImport.update({
+  id: '/audit-logs',
+  path: '/audit-logs',
   getParentRoute: () => DashboardRoute,
 } as any)
-const DashboardEipWorkLogRoute = DashboardEipWorkLogRouteImport.update({
-  id: '/work-log',
-  path: '/work-log',
-  getParentRoute: () => DashboardEipRoute,
+const DashboardDeptViewGrantsRoute = DashboardDeptViewGrantsRouteImport.update({
+  id: '/dept-view-grants',
+  path: '/dept-view-grants',
+  getParentRoute: () => DashboardRoute,
 } as any)
-const DashboardEipTasksRoute = DashboardEipTasksRouteImport.update({
-  id: '/tasks',
-  path: '/tasks',
-  getParentRoute: () => DashboardEipRoute,
+const DashboardDevHistoryRoute = DashboardDevHistoryRouteImport.update({
+  id: '/dev-history',
+  path: '/dev-history',
+  getParentRoute: () => DashboardRoute,
 } as any)
-const DashboardEipReportsRoute = DashboardEipReportsRouteImport.update({
-  id: '/reports',
-  path: '/reports',
-  getParentRoute: () => DashboardEipRoute,
+const DashboardDevTodosRoute = DashboardDevTodosRouteImport.update({
+  id: '/dev-todos',
+  path: '/dev-todos',
+  getParentRoute: () => DashboardRoute,
 } as any)
-const DashboardEipRecurringRoute = DashboardEipRecurringRouteImport.update({
-  id: '/recurring',
-  path: '/recurring',
-  getParentRoute: () => DashboardEipRoute,
+const DashboardEipRoute = DashboardEipRouteImport.update({
+  id: '/eip',
+  path: '/eip',
+  getParentRoute: () => DashboardRoute,
 } as any)
-const DashboardEipQuickReportsRoute =
-  DashboardEipQuickReportsRouteImport.update({
-    id: '/quick-reports',
-    path: '/quick-reports',
+const DashboardErrorLogsRoute = DashboardErrorLogsRouteImport.update({
+  id: '/error-logs',
+  path: '/error-logs',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardFeatureRequestsRoute =
+  DashboardFeatureRequestsRouteImport.update({
+    id: '/feature-requests',
+    path: '/feature-requests',
+    getParentRoute: () => DashboardRoute,
+  } as any)
+const DashboardIssueReportsRoute = DashboardIssueReportsRouteImport.update({
+  id: '/issue-reports',
+  path: '/issue-reports',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardLookupsRoute = DashboardLookupsRouteImport.update({
+  id: '/lookups',
+  path: '/lookups',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardMenuManagementRoute = DashboardMenuManagementRouteImport.update({
+  id: '/menu-management',
+  path: '/menu-management',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardNotificationSettingsRoute =
+  DashboardNotificationSettingsRouteImport.update({
+    id: '/notification-settings',
+    path: '/notification-settings',
+    getParentRoute: () => DashboardRoute,
+  } as any)
+const DashboardNotificationsRoute = DashboardNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardOrgRoute = DashboardOrgRouteImport.update({
+  id: '/org',
+  path: '/org',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardProfileRoute = DashboardProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardRolePermissionsRoute =
+  DashboardRolePermissionsRouteImport.update({
+    id: '/role-permissions',
+    path: '/role-permissions',
+    getParentRoute: () => DashboardRoute,
+  } as any)
+const DashboardSystemConfigRoute = DashboardSystemConfigRouteImport.update({
+  id: '/system-config',
+  path: '/system-config',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardSystemDocsRoute = DashboardSystemDocsRouteImport.update({
+  id: '/system-docs',
+  path: '/system-docs',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardUserManualRoute = DashboardUserManualRouteImport.update({
+  id: '/user-manual',
+  path: '/user-manual',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardUsersRoute = DashboardUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardEipAnnouncementsRoute =
+  DashboardEipAnnouncementsRouteImport.update({
+    id: '/announcements',
+    path: '/announcements',
     getParentRoute: () => DashboardEipRoute,
   } as any)
-const DashboardEipProjectsRoute = DashboardEipProjectsRouteImport.update({
-  id: '/projects',
-  path: '/projects',
+const DashboardEipAnomaliesRoute = DashboardEipAnomaliesRouteImport.update({
+  id: '/anomalies',
+  path: '/anomalies',
   getParentRoute: () => DashboardEipRoute,
 } as any)
-const DashboardEipPersonalRoutineRoute =
-  DashboardEipPersonalRoutineRouteImport.update({
-    id: '/personal-routine',
-    path: '/personal-routine',
-    getParentRoute: () => DashboardEipRoute,
-  } as any)
-const DashboardEipPerformanceRoute = DashboardEipPerformanceRouteImport.update({
-  id: '/performance',
-  path: '/performance',
+const DashboardEipAssistantRoute = DashboardEipAssistantRouteImport.update({
+  id: '/assistant',
+  path: '/assistant',
   getParentRoute: () => DashboardEipRoute,
 } as any)
-const DashboardEipMyTasksRoute = DashboardEipMyTasksRouteImport.update({
-  id: '/my-tasks',
-  path: '/my-tasks',
+const DashboardEipCalendarRoute = DashboardEipCalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
   getParentRoute: () => DashboardEipRoute,
 } as any)
-const DashboardEipMembersRoute = DashboardEipMembersRouteImport.update({
-  id: '/members',
-  path: '/members',
+const DashboardEipChangelogRoute = DashboardEipChangelogRouteImport.update({
+  id: '/changelog',
+  path: '/changelog',
   getParentRoute: () => DashboardEipRoute,
 } as any)
-const DashboardEipMeetingsRoute = DashboardEipMeetingsRouteImport.update({
-  id: '/meetings',
-  path: '/meetings',
+const DashboardEipDeptRoutineRoute = DashboardEipDeptRoutineRouteImport.update({
+  id: '/dept-routine',
+  path: '/dept-routine',
   getParentRoute: () => DashboardEipRoute,
 } as any)
-const DashboardEipHandoverRoute = DashboardEipHandoverRouteImport.update({
-  id: '/handover',
-  path: '/handover',
+const DashboardEipDeptWorkLogRoute = DashboardEipDeptWorkLogRouteImport.update({
+  id: '/dept-work-log',
+  path: '/dept-work-log',
+  getParentRoute: () => DashboardEipRoute,
+} as any)
+const DashboardEipDocumentsRoute = DashboardEipDocumentsRouteImport.update({
+  id: '/documents',
+  path: '/documents',
   getParentRoute: () => DashboardEipRoute,
 } as any)
 const DashboardEipFeatureRequestsRoute =
@@ -260,74 +241,77 @@ const DashboardEipFeatureRequestsRoute =
     path: '/feature-requests',
     getParentRoute: () => DashboardEipRoute,
   } as any)
-const DashboardEipDocumentsRoute = DashboardEipDocumentsRouteImport.update({
-  id: '/documents',
-  path: '/documents',
+const DashboardEipHandoverRoute = DashboardEipHandoverRouteImport.update({
+  id: '/handover',
+  path: '/handover',
   getParentRoute: () => DashboardEipRoute,
 } as any)
-const DashboardEipDeptRoutineRoute = DashboardEipDeptRoutineRouteImport.update({
-  id: '/dept-routine',
-  path: '/dept-routine',
+const DashboardEipMeetingsRoute = DashboardEipMeetingsRouteImport.update({
+  id: '/meetings',
+  path: '/meetings',
   getParentRoute: () => DashboardEipRoute,
 } as any)
-const DashboardEipChangelogRoute = DashboardEipChangelogRouteImport.update({
-  id: '/changelog',
-  path: '/changelog',
+const DashboardEipMembersRoute = DashboardEipMembersRouteImport.update({
+  id: '/members',
+  path: '/members',
   getParentRoute: () => DashboardEipRoute,
 } as any)
-const DashboardEipCalendarRoute = DashboardEipCalendarRouteImport.update({
-  id: '/calendar',
-  path: '/calendar',
+const DashboardEipMyTasksRoute = DashboardEipMyTasksRouteImport.update({
+  id: '/my-tasks',
+  path: '/my-tasks',
   getParentRoute: () => DashboardEipRoute,
 } as any)
-const DashboardEipAssistantRoute = DashboardEipAssistantRouteImport.update({
-  id: '/assistant',
-  path: '/assistant',
+const DashboardEipPerformanceRoute = DashboardEipPerformanceRouteImport.update({
+  id: '/performance',
+  path: '/performance',
   getParentRoute: () => DashboardEipRoute,
 } as any)
-const DashboardEipAnomaliesRoute = DashboardEipAnomaliesRouteImport.update({
-  id: '/anomalies',
-  path: '/anomalies',
-  getParentRoute: () => DashboardEipRoute,
-} as any)
-const DashboardEipAnnouncementsRoute =
-  DashboardEipAnnouncementsRouteImport.update({
-    id: '/announcements',
-    path: '/announcements',
+const DashboardEipPersonalRoutineRoute =
+  DashboardEipPersonalRoutineRouteImport.update({
+    id: '/personal-routine',
+    path: '/personal-routine',
     getParentRoute: () => DashboardEipRoute,
   } as any)
-const DashboardEipProjectsIndexRoute =
-  DashboardEipProjectsIndexRouteImport.update({
-    id: '/',
-    path: '/',
-    getParentRoute: () => DashboardEipProjectsRoute,
+const DashboardEipPhoneOrderRoute = DashboardEipPhoneOrderRouteImport.update({
+  id: '/phone-order',
+  path: '/phone-order',
+  getParentRoute: () => DashboardEipRoute,
+} as any)
+const DashboardEipProjectsRoute = DashboardEipProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => DashboardEipRoute,
+} as any)
+const DashboardEipQuickReportsRoute =
+  DashboardEipQuickReportsRouteImport.update({
+    id: '/quick-reports',
+    path: '/quick-reports',
+    getParentRoute: () => DashboardEipRoute,
   } as any)
-const DashboardEipMeetingsIndexRoute =
-  DashboardEipMeetingsIndexRouteImport.update({
-    id: '/',
-    path: '/',
-    getParentRoute: () => DashboardEipMeetingsRoute,
-  } as any)
+const DashboardEipRecurringRoute = DashboardEipRecurringRouteImport.update({
+  id: '/recurring',
+  path: '/recurring',
+  getParentRoute: () => DashboardEipRoute,
+} as any)
+const DashboardEipReportsRoute = DashboardEipReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => DashboardEipRoute,
+} as any)
+const DashboardEipTasksRoute = DashboardEipTasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
+  getParentRoute: () => DashboardEipRoute,
+} as any)
+const DashboardEipWorkLogRoute = DashboardEipWorkLogRouteImport.update({
+  id: '/work-log',
+  path: '/work-log',
+  getParentRoute: () => DashboardEipRoute,
+} as any)
 const DashboardEipFeatureRequestsIndexRoute =
   DashboardEipFeatureRequestsIndexRouteImport.update({
     id: '/',
     path: '/',
-    getParentRoute: () => DashboardEipFeatureRequestsRoute,
-  } as any)
-const DashboardEipProjectsIdRoute = DashboardEipProjectsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => DashboardEipProjectsRoute,
-} as any)
-const DashboardEipMeetingsIdRoute = DashboardEipMeetingsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => DashboardEipMeetingsRoute,
-} as any)
-const DashboardEipFeatureRequestsNewRoute =
-  DashboardEipFeatureRequestsNewRouteImport.update({
-    id: '/new',
-    path: '/new',
     getParentRoute: () => DashboardEipFeatureRequestsRoute,
   } as any)
 const DashboardEipFeatureRequestsIdRoute =
@@ -336,6 +320,34 @@ const DashboardEipFeatureRequestsIdRoute =
     path: '/$id',
     getParentRoute: () => DashboardEipFeatureRequestsRoute,
   } as any)
+const DashboardEipFeatureRequestsNewRoute =
+  DashboardEipFeatureRequestsNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => DashboardEipFeatureRequestsRoute,
+  } as any)
+const DashboardEipMeetingsIndexRoute =
+  DashboardEipMeetingsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => DashboardEipMeetingsRoute,
+  } as any)
+const DashboardEipMeetingsIdRoute = DashboardEipMeetingsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => DashboardEipMeetingsRoute,
+} as any)
+const DashboardEipProjectsIndexRoute =
+  DashboardEipProjectsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => DashboardEipProjectsRoute,
+  } as any)
+const DashboardEipProjectsIdRoute = DashboardEipProjectsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => DashboardEipProjectsRoute,
+} as any)
 const DashboardEipFeatureRequestsIdEditRoute =
   DashboardEipFeatureRequestsIdEditRouteImport.update({
     id: '/edit',
@@ -375,6 +387,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/eip/calendar': typeof DashboardEipCalendarRoute
   '/dashboard/eip/changelog': typeof DashboardEipChangelogRoute
   '/dashboard/eip/dept-routine': typeof DashboardEipDeptRoutineRoute
+  '/dashboard/eip/dept-work-log': typeof DashboardEipDeptWorkLogRoute
   '/dashboard/eip/documents': typeof DashboardEipDocumentsRoute
   '/dashboard/eip/feature-requests': typeof DashboardEipFeatureRequestsRouteWithChildren
   '/dashboard/eip/handover': typeof DashboardEipHandoverRoute
@@ -383,6 +396,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/eip/my-tasks': typeof DashboardEipMyTasksRoute
   '/dashboard/eip/performance': typeof DashboardEipPerformanceRoute
   '/dashboard/eip/personal-routine': typeof DashboardEipPersonalRoutineRoute
+  '/dashboard/eip/phone-order': typeof DashboardEipPhoneOrderRoute
   '/dashboard/eip/projects': typeof DashboardEipProjectsRouteWithChildren
   '/dashboard/eip/quick-reports': typeof DashboardEipQuickReportsRoute
   '/dashboard/eip/recurring': typeof DashboardEipRecurringRoute
@@ -429,12 +443,14 @@ export interface FileRoutesByTo {
   '/dashboard/eip/calendar': typeof DashboardEipCalendarRoute
   '/dashboard/eip/changelog': typeof DashboardEipChangelogRoute
   '/dashboard/eip/dept-routine': typeof DashboardEipDeptRoutineRoute
+  '/dashboard/eip/dept-work-log': typeof DashboardEipDeptWorkLogRoute
   '/dashboard/eip/documents': typeof DashboardEipDocumentsRoute
   '/dashboard/eip/handover': typeof DashboardEipHandoverRoute
   '/dashboard/eip/members': typeof DashboardEipMembersRoute
   '/dashboard/eip/my-tasks': typeof DashboardEipMyTasksRoute
   '/dashboard/eip/performance': typeof DashboardEipPerformanceRoute
   '/dashboard/eip/personal-routine': typeof DashboardEipPersonalRoutineRoute
+  '/dashboard/eip/phone-order': typeof DashboardEipPhoneOrderRoute
   '/dashboard/eip/quick-reports': typeof DashboardEipQuickReportsRoute
   '/dashboard/eip/recurring': typeof DashboardEipRecurringRoute
   '/dashboard/eip/reports': typeof DashboardEipReportsRoute
@@ -482,6 +498,7 @@ export interface FileRoutesById {
   '/dashboard/eip/calendar': typeof DashboardEipCalendarRoute
   '/dashboard/eip/changelog': typeof DashboardEipChangelogRoute
   '/dashboard/eip/dept-routine': typeof DashboardEipDeptRoutineRoute
+  '/dashboard/eip/dept-work-log': typeof DashboardEipDeptWorkLogRoute
   '/dashboard/eip/documents': typeof DashboardEipDocumentsRoute
   '/dashboard/eip/feature-requests': typeof DashboardEipFeatureRequestsRouteWithChildren
   '/dashboard/eip/handover': typeof DashboardEipHandoverRoute
@@ -490,6 +507,7 @@ export interface FileRoutesById {
   '/dashboard/eip/my-tasks': typeof DashboardEipMyTasksRoute
   '/dashboard/eip/performance': typeof DashboardEipPerformanceRoute
   '/dashboard/eip/personal-routine': typeof DashboardEipPersonalRoutineRoute
+  '/dashboard/eip/phone-order': typeof DashboardEipPhoneOrderRoute
   '/dashboard/eip/projects': typeof DashboardEipProjectsRouteWithChildren
   '/dashboard/eip/quick-reports': typeof DashboardEipQuickReportsRoute
   '/dashboard/eip/recurring': typeof DashboardEipRecurringRoute
@@ -539,6 +557,7 @@ export interface FileRouteTypes {
     | '/dashboard/eip/calendar'
     | '/dashboard/eip/changelog'
     | '/dashboard/eip/dept-routine'
+    | '/dashboard/eip/dept-work-log'
     | '/dashboard/eip/documents'
     | '/dashboard/eip/feature-requests'
     | '/dashboard/eip/handover'
@@ -547,6 +566,7 @@ export interface FileRouteTypes {
     | '/dashboard/eip/my-tasks'
     | '/dashboard/eip/performance'
     | '/dashboard/eip/personal-routine'
+    | '/dashboard/eip/phone-order'
     | '/dashboard/eip/projects'
     | '/dashboard/eip/quick-reports'
     | '/dashboard/eip/recurring'
@@ -593,12 +613,14 @@ export interface FileRouteTypes {
     | '/dashboard/eip/calendar'
     | '/dashboard/eip/changelog'
     | '/dashboard/eip/dept-routine'
+    | '/dashboard/eip/dept-work-log'
     | '/dashboard/eip/documents'
     | '/dashboard/eip/handover'
     | '/dashboard/eip/members'
     | '/dashboard/eip/my-tasks'
     | '/dashboard/eip/performance'
     | '/dashboard/eip/personal-routine'
+    | '/dashboard/eip/phone-order'
     | '/dashboard/eip/quick-reports'
     | '/dashboard/eip/recurring'
     | '/dashboard/eip/reports'
@@ -645,6 +667,7 @@ export interface FileRouteTypes {
     | '/dashboard/eip/calendar'
     | '/dashboard/eip/changelog'
     | '/dashboard/eip/dept-routine'
+    | '/dashboard/eip/dept-work-log'
     | '/dashboard/eip/documents'
     | '/dashboard/eip/feature-requests'
     | '/dashboard/eip/handover'
@@ -653,6 +676,7 @@ export interface FileRouteTypes {
     | '/dashboard/eip/my-tasks'
     | '/dashboard/eip/performance'
     | '/dashboard/eip/personal-routine'
+    | '/dashboard/eip/phone-order'
     | '/dashboard/eip/projects'
     | '/dashboard/eip/quick-reports'
     | '/dashboard/eip/recurring'
@@ -677,11 +701,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -691,11 +715,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard/': {
@@ -705,137 +729,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardIndexRouteImport
       parentRoute: typeof DashboardRoute
     }
-    '/dashboard/users': {
-      id: '/dashboard/users'
-      path: '/users'
-      fullPath: '/dashboard/users'
-      preLoaderRoute: typeof DashboardUsersRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/user-manual': {
-      id: '/dashboard/user-manual'
-      path: '/user-manual'
-      fullPath: '/dashboard/user-manual'
-      preLoaderRoute: typeof DashboardUserManualRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/system-docs': {
-      id: '/dashboard/system-docs'
-      path: '/system-docs'
-      fullPath: '/dashboard/system-docs'
-      preLoaderRoute: typeof DashboardSystemDocsRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/system-config': {
-      id: '/dashboard/system-config'
-      path: '/system-config'
-      fullPath: '/dashboard/system-config'
-      preLoaderRoute: typeof DashboardSystemConfigRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/role-permissions': {
-      id: '/dashboard/role-permissions'
-      path: '/role-permissions'
-      fullPath: '/dashboard/role-permissions'
-      preLoaderRoute: typeof DashboardRolePermissionsRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/profile': {
-      id: '/dashboard/profile'
-      path: '/profile'
-      fullPath: '/dashboard/profile'
-      preLoaderRoute: typeof DashboardProfileRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/org': {
-      id: '/dashboard/org'
-      path: '/org'
-      fullPath: '/dashboard/org'
-      preLoaderRoute: typeof DashboardOrgRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/notifications': {
-      id: '/dashboard/notifications'
-      path: '/notifications'
-      fullPath: '/dashboard/notifications'
-      preLoaderRoute: typeof DashboardNotificationsRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/notification-settings': {
-      id: '/dashboard/notification-settings'
-      path: '/notification-settings'
-      fullPath: '/dashboard/notification-settings'
-      preLoaderRoute: typeof DashboardNotificationSettingsRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/menu-management': {
-      id: '/dashboard/menu-management'
-      path: '/menu-management'
-      fullPath: '/dashboard/menu-management'
-      preLoaderRoute: typeof DashboardMenuManagementRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/lookups': {
-      id: '/dashboard/lookups'
-      path: '/lookups'
-      fullPath: '/dashboard/lookups'
-      preLoaderRoute: typeof DashboardLookupsRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/issue-reports': {
-      id: '/dashboard/issue-reports'
-      path: '/issue-reports'
-      fullPath: '/dashboard/issue-reports'
-      preLoaderRoute: typeof DashboardIssueReportsRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/feature-requests': {
-      id: '/dashboard/feature-requests'
-      path: '/feature-requests'
-      fullPath: '/dashboard/feature-requests'
-      preLoaderRoute: typeof DashboardFeatureRequestsRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/error-logs': {
-      id: '/dashboard/error-logs'
-      path: '/error-logs'
-      fullPath: '/dashboard/error-logs'
-      preLoaderRoute: typeof DashboardErrorLogsRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/eip': {
-      id: '/dashboard/eip'
-      path: '/eip'
-      fullPath: '/dashboard/eip'
-      preLoaderRoute: typeof DashboardEipRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/dev-todos': {
-      id: '/dashboard/dev-todos'
-      path: '/dev-todos'
-      fullPath: '/dashboard/dev-todos'
-      preLoaderRoute: typeof DashboardDevTodosRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/dev-history': {
-      id: '/dashboard/dev-history'
-      path: '/dev-history'
-      fullPath: '/dashboard/dev-history'
-      preLoaderRoute: typeof DashboardDevHistoryRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/dept-view-grants': {
-      id: '/dashboard/dept-view-grants'
-      path: '/dept-view-grants'
-      fullPath: '/dashboard/dept-view-grants'
-      preLoaderRoute: typeof DashboardDeptViewGrantsRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/audit-logs': {
-      id: '/dashboard/audit-logs'
-      path: '/audit-logs'
-      fullPath: '/dashboard/audit-logs'
-      preLoaderRoute: typeof DashboardAuditLogsRouteImport
+    '/dashboard/activity-logs': {
+      id: '/dashboard/activity-logs'
+      path: '/activity-logs'
+      fullPath: '/dashboard/activity-logs'
+      preLoaderRoute: typeof DashboardActivityLogsRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/assistant-intent': {
@@ -845,137 +743,144 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardAssistantIntentRouteImport
       parentRoute: typeof DashboardRoute
     }
-    '/dashboard/activity-logs': {
-      id: '/dashboard/activity-logs'
-      path: '/activity-logs'
-      fullPath: '/dashboard/activity-logs'
-      preLoaderRoute: typeof DashboardActivityLogsRouteImport
+    '/dashboard/audit-logs': {
+      id: '/dashboard/audit-logs'
+      path: '/audit-logs'
+      fullPath: '/dashboard/audit-logs'
+      preLoaderRoute: typeof DashboardAuditLogsRouteImport
       parentRoute: typeof DashboardRoute
     }
-    '/dashboard/eip/work-log': {
-      id: '/dashboard/eip/work-log'
-      path: '/work-log'
-      fullPath: '/dashboard/eip/work-log'
-      preLoaderRoute: typeof DashboardEipWorkLogRouteImport
-      parentRoute: typeof DashboardEipRoute
+    '/dashboard/dept-view-grants': {
+      id: '/dashboard/dept-view-grants'
+      path: '/dept-view-grants'
+      fullPath: '/dashboard/dept-view-grants'
+      preLoaderRoute: typeof DashboardDeptViewGrantsRouteImport
+      parentRoute: typeof DashboardRoute
     }
-    '/dashboard/eip/tasks': {
-      id: '/dashboard/eip/tasks'
-      path: '/tasks'
-      fullPath: '/dashboard/eip/tasks'
-      preLoaderRoute: typeof DashboardEipTasksRouteImport
-      parentRoute: typeof DashboardEipRoute
+    '/dashboard/dev-history': {
+      id: '/dashboard/dev-history'
+      path: '/dev-history'
+      fullPath: '/dashboard/dev-history'
+      preLoaderRoute: typeof DashboardDevHistoryRouteImport
+      parentRoute: typeof DashboardRoute
     }
-    '/dashboard/eip/reports': {
-      id: '/dashboard/eip/reports'
-      path: '/reports'
-      fullPath: '/dashboard/eip/reports'
-      preLoaderRoute: typeof DashboardEipReportsRouteImport
-      parentRoute: typeof DashboardEipRoute
+    '/dashboard/dev-todos': {
+      id: '/dashboard/dev-todos'
+      path: '/dev-todos'
+      fullPath: '/dashboard/dev-todos'
+      preLoaderRoute: typeof DashboardDevTodosRouteImport
+      parentRoute: typeof DashboardRoute
     }
-    '/dashboard/eip/recurring': {
-      id: '/dashboard/eip/recurring'
-      path: '/recurring'
-      fullPath: '/dashboard/eip/recurring'
-      preLoaderRoute: typeof DashboardEipRecurringRouteImport
-      parentRoute: typeof DashboardEipRoute
+    '/dashboard/eip': {
+      id: '/dashboard/eip'
+      path: '/eip'
+      fullPath: '/dashboard/eip'
+      preLoaderRoute: typeof DashboardEipRouteImport
+      parentRoute: typeof DashboardRoute
     }
-    '/dashboard/eip/quick-reports': {
-      id: '/dashboard/eip/quick-reports'
-      path: '/quick-reports'
-      fullPath: '/dashboard/eip/quick-reports'
-      preLoaderRoute: typeof DashboardEipQuickReportsRouteImport
-      parentRoute: typeof DashboardEipRoute
+    '/dashboard/error-logs': {
+      id: '/dashboard/error-logs'
+      path: '/error-logs'
+      fullPath: '/dashboard/error-logs'
+      preLoaderRoute: typeof DashboardErrorLogsRouteImport
+      parentRoute: typeof DashboardRoute
     }
-    '/dashboard/eip/projects': {
-      id: '/dashboard/eip/projects'
-      path: '/projects'
-      fullPath: '/dashboard/eip/projects'
-      preLoaderRoute: typeof DashboardEipProjectsRouteImport
-      parentRoute: typeof DashboardEipRoute
-    }
-    '/dashboard/eip/personal-routine': {
-      id: '/dashboard/eip/personal-routine'
-      path: '/personal-routine'
-      fullPath: '/dashboard/eip/personal-routine'
-      preLoaderRoute: typeof DashboardEipPersonalRoutineRouteImport
-      parentRoute: typeof DashboardEipRoute
-    }
-    '/dashboard/eip/performance': {
-      id: '/dashboard/eip/performance'
-      path: '/performance'
-      fullPath: '/dashboard/eip/performance'
-      preLoaderRoute: typeof DashboardEipPerformanceRouteImport
-      parentRoute: typeof DashboardEipRoute
-    }
-    '/dashboard/eip/my-tasks': {
-      id: '/dashboard/eip/my-tasks'
-      path: '/my-tasks'
-      fullPath: '/dashboard/eip/my-tasks'
-      preLoaderRoute: typeof DashboardEipMyTasksRouteImport
-      parentRoute: typeof DashboardEipRoute
-    }
-    '/dashboard/eip/members': {
-      id: '/dashboard/eip/members'
-      path: '/members'
-      fullPath: '/dashboard/eip/members'
-      preLoaderRoute: typeof DashboardEipMembersRouteImport
-      parentRoute: typeof DashboardEipRoute
-    }
-    '/dashboard/eip/meetings': {
-      id: '/dashboard/eip/meetings'
-      path: '/meetings'
-      fullPath: '/dashboard/eip/meetings'
-      preLoaderRoute: typeof DashboardEipMeetingsRouteImport
-      parentRoute: typeof DashboardEipRoute
-    }
-    '/dashboard/eip/handover': {
-      id: '/dashboard/eip/handover'
-      path: '/handover'
-      fullPath: '/dashboard/eip/handover'
-      preLoaderRoute: typeof DashboardEipHandoverRouteImport
-      parentRoute: typeof DashboardEipRoute
-    }
-    '/dashboard/eip/feature-requests': {
-      id: '/dashboard/eip/feature-requests'
+    '/dashboard/feature-requests': {
+      id: '/dashboard/feature-requests'
       path: '/feature-requests'
-      fullPath: '/dashboard/eip/feature-requests'
-      preLoaderRoute: typeof DashboardEipFeatureRequestsRouteImport
-      parentRoute: typeof DashboardEipRoute
+      fullPath: '/dashboard/feature-requests'
+      preLoaderRoute: typeof DashboardFeatureRequestsRouteImport
+      parentRoute: typeof DashboardRoute
     }
-    '/dashboard/eip/documents': {
-      id: '/dashboard/eip/documents'
-      path: '/documents'
-      fullPath: '/dashboard/eip/documents'
-      preLoaderRoute: typeof DashboardEipDocumentsRouteImport
-      parentRoute: typeof DashboardEipRoute
+    '/dashboard/issue-reports': {
+      id: '/dashboard/issue-reports'
+      path: '/issue-reports'
+      fullPath: '/dashboard/issue-reports'
+      preLoaderRoute: typeof DashboardIssueReportsRouteImport
+      parentRoute: typeof DashboardRoute
     }
-    '/dashboard/eip/dept-routine': {
-      id: '/dashboard/eip/dept-routine'
-      path: '/dept-routine'
-      fullPath: '/dashboard/eip/dept-routine'
-      preLoaderRoute: typeof DashboardEipDeptRoutineRouteImport
-      parentRoute: typeof DashboardEipRoute
+    '/dashboard/lookups': {
+      id: '/dashboard/lookups'
+      path: '/lookups'
+      fullPath: '/dashboard/lookups'
+      preLoaderRoute: typeof DashboardLookupsRouteImport
+      parentRoute: typeof DashboardRoute
     }
-    '/dashboard/eip/changelog': {
-      id: '/dashboard/eip/changelog'
-      path: '/changelog'
-      fullPath: '/dashboard/eip/changelog'
-      preLoaderRoute: typeof DashboardEipChangelogRouteImport
-      parentRoute: typeof DashboardEipRoute
+    '/dashboard/menu-management': {
+      id: '/dashboard/menu-management'
+      path: '/menu-management'
+      fullPath: '/dashboard/menu-management'
+      preLoaderRoute: typeof DashboardMenuManagementRouteImport
+      parentRoute: typeof DashboardRoute
     }
-    '/dashboard/eip/calendar': {
-      id: '/dashboard/eip/calendar'
-      path: '/calendar'
-      fullPath: '/dashboard/eip/calendar'
-      preLoaderRoute: typeof DashboardEipCalendarRouteImport
-      parentRoute: typeof DashboardEipRoute
+    '/dashboard/notification-settings': {
+      id: '/dashboard/notification-settings'
+      path: '/notification-settings'
+      fullPath: '/dashboard/notification-settings'
+      preLoaderRoute: typeof DashboardNotificationSettingsRouteImport
+      parentRoute: typeof DashboardRoute
     }
-    '/dashboard/eip/assistant': {
-      id: '/dashboard/eip/assistant'
-      path: '/assistant'
-      fullPath: '/dashboard/eip/assistant'
-      preLoaderRoute: typeof DashboardEipAssistantRouteImport
+    '/dashboard/notifications': {
+      id: '/dashboard/notifications'
+      path: '/notifications'
+      fullPath: '/dashboard/notifications'
+      preLoaderRoute: typeof DashboardNotificationsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/org': {
+      id: '/dashboard/org'
+      path: '/org'
+      fullPath: '/dashboard/org'
+      preLoaderRoute: typeof DashboardOrgRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/profile': {
+      id: '/dashboard/profile'
+      path: '/profile'
+      fullPath: '/dashboard/profile'
+      preLoaderRoute: typeof DashboardProfileRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/role-permissions': {
+      id: '/dashboard/role-permissions'
+      path: '/role-permissions'
+      fullPath: '/dashboard/role-permissions'
+      preLoaderRoute: typeof DashboardRolePermissionsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/system-config': {
+      id: '/dashboard/system-config'
+      path: '/system-config'
+      fullPath: '/dashboard/system-config'
+      preLoaderRoute: typeof DashboardSystemConfigRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/system-docs': {
+      id: '/dashboard/system-docs'
+      path: '/system-docs'
+      fullPath: '/dashboard/system-docs'
+      preLoaderRoute: typeof DashboardSystemDocsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/user-manual': {
+      id: '/dashboard/user-manual'
+      path: '/user-manual'
+      fullPath: '/dashboard/user-manual'
+      preLoaderRoute: typeof DashboardUserManualRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/users': {
+      id: '/dashboard/users'
+      path: '/users'
+      fullPath: '/dashboard/users'
+      preLoaderRoute: typeof DashboardUsersRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/eip/announcements': {
+      id: '/dashboard/eip/announcements'
+      path: '/announcements'
+      fullPath: '/dashboard/eip/announcements'
+      preLoaderRoute: typeof DashboardEipAnnouncementsRouteImport
       parentRoute: typeof DashboardEipRoute
     }
     '/dashboard/eip/anomalies': {
@@ -985,26 +890,145 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardEipAnomaliesRouteImport
       parentRoute: typeof DashboardEipRoute
     }
-    '/dashboard/eip/announcements': {
-      id: '/dashboard/eip/announcements'
-      path: '/announcements'
-      fullPath: '/dashboard/eip/announcements'
-      preLoaderRoute: typeof DashboardEipAnnouncementsRouteImport
+    '/dashboard/eip/assistant': {
+      id: '/dashboard/eip/assistant'
+      path: '/assistant'
+      fullPath: '/dashboard/eip/assistant'
+      preLoaderRoute: typeof DashboardEipAssistantRouteImport
       parentRoute: typeof DashboardEipRoute
     }
-    '/dashboard/eip/projects/': {
-      id: '/dashboard/eip/projects/'
-      path: '/'
-      fullPath: '/dashboard/eip/projects/'
-      preLoaderRoute: typeof DashboardEipProjectsIndexRouteImport
-      parentRoute: typeof DashboardEipProjectsRoute
+    '/dashboard/eip/calendar': {
+      id: '/dashboard/eip/calendar'
+      path: '/calendar'
+      fullPath: '/dashboard/eip/calendar'
+      preLoaderRoute: typeof DashboardEipCalendarRouteImport
+      parentRoute: typeof DashboardEipRoute
     }
-    '/dashboard/eip/meetings/': {
-      id: '/dashboard/eip/meetings/'
-      path: '/'
-      fullPath: '/dashboard/eip/meetings/'
-      preLoaderRoute: typeof DashboardEipMeetingsIndexRouteImport
-      parentRoute: typeof DashboardEipMeetingsRoute
+    '/dashboard/eip/changelog': {
+      id: '/dashboard/eip/changelog'
+      path: '/changelog'
+      fullPath: '/dashboard/eip/changelog'
+      preLoaderRoute: typeof DashboardEipChangelogRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/dept-routine': {
+      id: '/dashboard/eip/dept-routine'
+      path: '/dept-routine'
+      fullPath: '/dashboard/eip/dept-routine'
+      preLoaderRoute: typeof DashboardEipDeptRoutineRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/dept-work-log': {
+      id: '/dashboard/eip/dept-work-log'
+      path: '/dept-work-log'
+      fullPath: '/dashboard/eip/dept-work-log'
+      preLoaderRoute: typeof DashboardEipDeptWorkLogRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/documents': {
+      id: '/dashboard/eip/documents'
+      path: '/documents'
+      fullPath: '/dashboard/eip/documents'
+      preLoaderRoute: typeof DashboardEipDocumentsRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/feature-requests': {
+      id: '/dashboard/eip/feature-requests'
+      path: '/feature-requests'
+      fullPath: '/dashboard/eip/feature-requests'
+      preLoaderRoute: typeof DashboardEipFeatureRequestsRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/handover': {
+      id: '/dashboard/eip/handover'
+      path: '/handover'
+      fullPath: '/dashboard/eip/handover'
+      preLoaderRoute: typeof DashboardEipHandoverRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/meetings': {
+      id: '/dashboard/eip/meetings'
+      path: '/meetings'
+      fullPath: '/dashboard/eip/meetings'
+      preLoaderRoute: typeof DashboardEipMeetingsRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/members': {
+      id: '/dashboard/eip/members'
+      path: '/members'
+      fullPath: '/dashboard/eip/members'
+      preLoaderRoute: typeof DashboardEipMembersRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/my-tasks': {
+      id: '/dashboard/eip/my-tasks'
+      path: '/my-tasks'
+      fullPath: '/dashboard/eip/my-tasks'
+      preLoaderRoute: typeof DashboardEipMyTasksRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/performance': {
+      id: '/dashboard/eip/performance'
+      path: '/performance'
+      fullPath: '/dashboard/eip/performance'
+      preLoaderRoute: typeof DashboardEipPerformanceRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/personal-routine': {
+      id: '/dashboard/eip/personal-routine'
+      path: '/personal-routine'
+      fullPath: '/dashboard/eip/personal-routine'
+      preLoaderRoute: typeof DashboardEipPersonalRoutineRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/phone-order': {
+      id: '/dashboard/eip/phone-order'
+      path: '/phone-order'
+      fullPath: '/dashboard/eip/phone-order'
+      preLoaderRoute: typeof DashboardEipPhoneOrderRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/projects': {
+      id: '/dashboard/eip/projects'
+      path: '/projects'
+      fullPath: '/dashboard/eip/projects'
+      preLoaderRoute: typeof DashboardEipProjectsRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/quick-reports': {
+      id: '/dashboard/eip/quick-reports'
+      path: '/quick-reports'
+      fullPath: '/dashboard/eip/quick-reports'
+      preLoaderRoute: typeof DashboardEipQuickReportsRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/recurring': {
+      id: '/dashboard/eip/recurring'
+      path: '/recurring'
+      fullPath: '/dashboard/eip/recurring'
+      preLoaderRoute: typeof DashboardEipRecurringRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/reports': {
+      id: '/dashboard/eip/reports'
+      path: '/reports'
+      fullPath: '/dashboard/eip/reports'
+      preLoaderRoute: typeof DashboardEipReportsRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/tasks': {
+      id: '/dashboard/eip/tasks'
+      path: '/tasks'
+      fullPath: '/dashboard/eip/tasks'
+      preLoaderRoute: typeof DashboardEipTasksRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/work-log': {
+      id: '/dashboard/eip/work-log'
+      path: '/work-log'
+      fullPath: '/dashboard/eip/work-log'
+      preLoaderRoute: typeof DashboardEipWorkLogRouteImport
+      parentRoute: typeof DashboardEipRoute
     }
     '/dashboard/eip/feature-requests/': {
       id: '/dashboard/eip/feature-requests/'
@@ -1013,19 +1037,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardEipFeatureRequestsIndexRouteImport
       parentRoute: typeof DashboardEipFeatureRequestsRoute
     }
-    '/dashboard/eip/projects/$id': {
-      id: '/dashboard/eip/projects/$id'
+    '/dashboard/eip/feature-requests/$id': {
+      id: '/dashboard/eip/feature-requests/$id'
       path: '/$id'
-      fullPath: '/dashboard/eip/projects/$id'
-      preLoaderRoute: typeof DashboardEipProjectsIdRouteImport
-      parentRoute: typeof DashboardEipProjectsRoute
-    }
-    '/dashboard/eip/meetings/$id': {
-      id: '/dashboard/eip/meetings/$id'
-      path: '/$id'
-      fullPath: '/dashboard/eip/meetings/$id'
-      preLoaderRoute: typeof DashboardEipMeetingsIdRouteImport
-      parentRoute: typeof DashboardEipMeetingsRoute
+      fullPath: '/dashboard/eip/feature-requests/$id'
+      preLoaderRoute: typeof DashboardEipFeatureRequestsIdRouteImport
+      parentRoute: typeof DashboardEipFeatureRequestsRoute
     }
     '/dashboard/eip/feature-requests/new': {
       id: '/dashboard/eip/feature-requests/new'
@@ -1034,12 +1051,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardEipFeatureRequestsNewRouteImport
       parentRoute: typeof DashboardEipFeatureRequestsRoute
     }
-    '/dashboard/eip/feature-requests/$id': {
-      id: '/dashboard/eip/feature-requests/$id'
+    '/dashboard/eip/meetings/': {
+      id: '/dashboard/eip/meetings/'
+      path: '/'
+      fullPath: '/dashboard/eip/meetings/'
+      preLoaderRoute: typeof DashboardEipMeetingsIndexRouteImport
+      parentRoute: typeof DashboardEipMeetingsRoute
+    }
+    '/dashboard/eip/meetings/$id': {
+      id: '/dashboard/eip/meetings/$id'
       path: '/$id'
-      fullPath: '/dashboard/eip/feature-requests/$id'
-      preLoaderRoute: typeof DashboardEipFeatureRequestsIdRouteImport
-      parentRoute: typeof DashboardEipFeatureRequestsRoute
+      fullPath: '/dashboard/eip/meetings/$id'
+      preLoaderRoute: typeof DashboardEipMeetingsIdRouteImport
+      parentRoute: typeof DashboardEipMeetingsRoute
+    }
+    '/dashboard/eip/projects/': {
+      id: '/dashboard/eip/projects/'
+      path: '/'
+      fullPath: '/dashboard/eip/projects/'
+      preLoaderRoute: typeof DashboardEipProjectsIndexRouteImport
+      parentRoute: typeof DashboardEipProjectsRoute
+    }
+    '/dashboard/eip/projects/$id': {
+      id: '/dashboard/eip/projects/$id'
+      path: '/$id'
+      fullPath: '/dashboard/eip/projects/$id'
+      preLoaderRoute: typeof DashboardEipProjectsIdRouteImport
+      parentRoute: typeof DashboardEipProjectsRoute
     }
     '/dashboard/eip/feature-requests/$id/edit': {
       id: '/dashboard/eip/feature-requests/$id/edit'
@@ -1119,6 +1157,7 @@ interface DashboardEipRouteChildren {
   DashboardEipCalendarRoute: typeof DashboardEipCalendarRoute
   DashboardEipChangelogRoute: typeof DashboardEipChangelogRoute
   DashboardEipDeptRoutineRoute: typeof DashboardEipDeptRoutineRoute
+  DashboardEipDeptWorkLogRoute: typeof DashboardEipDeptWorkLogRoute
   DashboardEipDocumentsRoute: typeof DashboardEipDocumentsRoute
   DashboardEipFeatureRequestsRoute: typeof DashboardEipFeatureRequestsRouteWithChildren
   DashboardEipHandoverRoute: typeof DashboardEipHandoverRoute
@@ -1127,6 +1166,7 @@ interface DashboardEipRouteChildren {
   DashboardEipMyTasksRoute: typeof DashboardEipMyTasksRoute
   DashboardEipPerformanceRoute: typeof DashboardEipPerformanceRoute
   DashboardEipPersonalRoutineRoute: typeof DashboardEipPersonalRoutineRoute
+  DashboardEipPhoneOrderRoute: typeof DashboardEipPhoneOrderRoute
   DashboardEipProjectsRoute: typeof DashboardEipProjectsRouteWithChildren
   DashboardEipQuickReportsRoute: typeof DashboardEipQuickReportsRoute
   DashboardEipRecurringRoute: typeof DashboardEipRecurringRoute
@@ -1142,6 +1182,7 @@ const DashboardEipRouteChildren: DashboardEipRouteChildren = {
   DashboardEipCalendarRoute: DashboardEipCalendarRoute,
   DashboardEipChangelogRoute: DashboardEipChangelogRoute,
   DashboardEipDeptRoutineRoute: DashboardEipDeptRoutineRoute,
+  DashboardEipDeptWorkLogRoute: DashboardEipDeptWorkLogRoute,
   DashboardEipDocumentsRoute: DashboardEipDocumentsRoute,
   DashboardEipFeatureRequestsRoute:
     DashboardEipFeatureRequestsRouteWithChildren,
@@ -1151,6 +1192,7 @@ const DashboardEipRouteChildren: DashboardEipRouteChildren = {
   DashboardEipMyTasksRoute: DashboardEipMyTasksRoute,
   DashboardEipPerformanceRoute: DashboardEipPerformanceRoute,
   DashboardEipPersonalRoutineRoute: DashboardEipPersonalRoutineRoute,
+  DashboardEipPhoneOrderRoute: DashboardEipPhoneOrderRoute,
   DashboardEipProjectsRoute: DashboardEipProjectsRouteWithChildren,
   DashboardEipQuickReportsRoute: DashboardEipQuickReportsRoute,
   DashboardEipRecurringRoute: DashboardEipRecurringRoute,
@@ -1225,3 +1267,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
