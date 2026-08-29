@@ -23,6 +23,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 
 // Strip leading emoji / symbols / whitespace from a title line.
 function stripLeadingEmoji(s: string): string {
@@ -116,18 +117,22 @@ export function DocRenderer({ content }: { content: string }) {
     return <div className="text-sm text-muted-foreground">（尚無內容）</div>;
   }
 
-  // Rich HTML document mode: when the stored content begins with an HTML tag we
-  // render it verbatim (it carries its own scoped `.eip-manual` styles). Only
-  // roles with edit permission on the doc page can write doc_pages (enforced by
-  // RLS), so this is trusted, admin-authored internal content — used by the
-  // full illustrated 使用手冊 (v4.0+). Plain-text docs (e.g. 系統文件) keep the
-  // section-card renderer below unchanged.
+  // Rich HTML document mode：內容以 HTML 標籤開頭時整段渲染（手冊自帶 .eip-manual
+  // scoped 樣式）。使用者手冊 v4.0+ 走這條。
+  //
+  // 2026-08-29：這裡原本是 dangerouslySetInnerHTML 直接吃 content，理由是
+  // 「只有有編輯權的人寫得進 doc_pages，算可信內容」。但可信不等於安全 ——
+  // 那是 4 個帳號（系統設計師＋3 位管理者），其中任何一個被盜或一時大意貼錯東西，
+  // 惡意腳本就會在全體員工（含系統設計師本人）已登入的瀏覽器裡執行。
+  // 現在一律消毒後再渲染。sanitizeHtml 已支援 <style>，手冊排版不受影響
+  // （實測 1156 個元素、49 個目錄錨點、6914 位元組 CSS 全數保留，
+  //   唯一差異是 49 個 <a> 補上 rel="noreferrer noopener"）。
   if (content.trimStart().startsWith("<")) {
     return (
       <div
         className="eip-doc-html"
         // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: content }}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) }}
       />
     );
   }

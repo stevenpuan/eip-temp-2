@@ -97,7 +97,16 @@ const tools = [
   { name: "search_documents", description: "在文件中心搜尋已發布文件（標題或摘要關鍵字）。回傳標題、摘要、類型。", input_schema: { type: "object", properties: { query: { type: "string" }, limit: { type: "number" } }, required: ["query"] } },
 ];
 
+// 網頁端建立任務要過 RLS 的 task_insert：
+//   current_role_name() = any('company_admin','dept_manager','member')
+// 這支函式用 service_role，RLS 不會生效，所以同一條規則必須自己寫一次；
+// 否則「唯讀」角色從網頁被擋、從 LINE 卻建得成。
+const TASK_CREATE_ROLES = ["company_admin", "dept_manager", "member"];
+
 async function insertTask(sb: any, me: Me, p: { title: string; due_date: string | null; priority: string; description: string | null; owner_id?: string | null; department_id?: string | null }): Promise<{ id: string; title: string } | null> {
+  if (!TASK_CREATE_ROLES.includes(me.role)) {
+    throw new Error("你的帳號沒有建立任務的權限");
+  }
   const { data: st } = await sb.from("task_status").select("id")
     .eq("tenant_id", me.tenant_id).eq("is_default", true).eq("is_done_state", false)
     .order("sort_order", { ascending: true }).limit(1).maybeSingle();
@@ -160,6 +169,10 @@ async function runTool(sb: any, me: Me, name: string, input: Record<string, unkn
   }
 
   if (name === "create_task") {
+    // 先擋在暫存前面，使用者才不會被問「要建立嗎」按了確認才發現沒權限
+    if (!TASK_CREATE_ROLES.includes(me.role)) {
+      return { error: "你的帳號沒有建立任務的權限，請改用網頁或聯絡管理者。" };
+    }
     const title = String(input.title ?? "").trim();
     if (!title) throw new Error("缺少任務標題");
     const pr = ["low", "normal", "high", "urgent"].includes(String(input.priority)) ? String(input.priority) : "normal";
