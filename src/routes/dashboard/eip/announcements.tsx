@@ -315,8 +315,12 @@ function AnnouncementFormDialog({
         // 發布狀態切換：未發布→發布給予 published_at;發布→撤回則清空
         if (publish && !announcement!.published_at) payload.published_at = new Date().toISOString();
         if (!publish && announcement!.published_at) payload.published_at = null;
-        const { error } = await supabase.from("announcement").update(payload).eq("id", announcement!.id);
+        const { data: aRows, error } = await supabase
+          .from("announcement").update(payload).eq("id", announcement!.id).select("id");
         if (error) throw error;
+        // audience_type='all' 時後面不會再寫 announcement_target，所以少了這道檢查，
+        // 主管改別人的全公司公告會完全沒有錯誤、跳「已儲存」而一個字都沒改。
+        if (!aRows?.length) throw new Error("儲存失敗：沒有權限變更這則公告（部門主管只能修改自己發布的公告）");
         aid = announcement!.id;
         // 重設對象。這句被擋掉時若照插新對象，會變成「舊對象＋新對象」並存
         // （公告仍發給已經移除的部門／人員），所以一定要接錯誤。
@@ -481,16 +485,19 @@ function AnnouncementRow({
 
   const togglePin = async () => {
     setOpErr(null);
-    const { error } = await supabase.from("announcement")
-      .update({ is_pinned: !a.is_pinned }).eq("id", a.id);
+    const { data, error } = await supabase.from("announcement")
+      .update({ is_pinned: !a.is_pinned }).eq("id", a.id).select("id");
     if (error) { const msg = humanizeError(error, "更新"); setOpErr(msg); toast.error(msg); return; }
+    // 被 RLS 擋掉時回 0 列而 error 是 null，原本一律跳「已更新」然後清單重載沒變。
+    if (!data?.length) { const msg = "更新失敗：沒有權限變更這則公告（部門主管只能修改自己發布的公告）"; setOpErr(msg); toast.error(msg); return; }
     toast.success("已更新"); qc.invalidateQueries({ queryKey: ["eip", "announcements"] }); onChanged();
   };
   const publish = async () => {
     setOpErr(null);
-    const { error } = await supabase.from("announcement")
-      .update({ published_at: new Date().toISOString() }).eq("id", a.id);
+    const { data, error } = await supabase.from("announcement")
+      .update({ published_at: new Date().toISOString() }).eq("id", a.id).select("id");
     if (error) { const msg = humanizeError(error, "發布"); setOpErr(msg); toast.error(msg); return; }
+    if (!data?.length) { const msg = "發布失敗：沒有權限變更這則公告（部門主管只能修改自己發布的公告）"; setOpErr(msg); toast.error(msg); return; }
     toast.success("已發布"); qc.invalidateQueries({ queryKey: ["eip", "announcements"] }); onChanged();
   };
 

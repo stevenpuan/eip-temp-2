@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { supabase as supabaseAny } from "@/lib/supabase";
 import { useEipUser } from "@/lib/eip-user";
 import { useAllUsers } from "@/hooks/useUsers";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -186,12 +187,20 @@ function FeatureRequestsPage() {
 
   const handleDelete = async () => {
     if (!deleteId) return;
-    const { error } = await supabase
-      .from("eip_feature_request")
-      .delete()
-      .eq("id", deleteId);
+    // eip_feature_request 掛了 BEFORE DELETE 的軟刪除 guard，.delete() 的 ROW_COUNT
+    // 一律 0、error 一律 null，所以原本無論有沒有權限都跳「已刪除需求」。
+    // 改走 eip_soft_delete RPC，靠回傳的 {ok, reason} 如實回報。
+    const { data, error } = await supabaseAny.rpc("eip_soft_delete", {
+      p_module: "eip_feature_requests",
+      p_id: deleteId,
+    });
     if (error) {
       toast.error(humanizeError(error, "刪除"));
+    } else if ((data as { ok?: boolean; reason?: string } | null)?.ok !== true) {
+      toast.error(
+        (data as { reason?: string } | null)?.reason
+          ?? "刪除失敗：僅提交者本人或管理者可刪除這筆需求",
+      );
     } else {
       toast.success("已刪除需求");
       qc.invalidateQueries({ queryKey: ["eip", "feature-requests"] });

@@ -337,9 +337,12 @@ function MeetingsPage() {
                 e.preventDefault();
                 if (!deleteMeeting) return;
                 setDeleting(true);
-                const { error } = await supabase.from("meeting").delete().eq("id", deleteMeeting.id);
+                const { data, error } = await supabase
+                  .from("meeting").delete().eq("id", deleteMeeting.id).select("id");
                 setDeleting(false);
                 if (error) { toast.error(humanizeError(error, "刪除")); return; }
+                // 被 RLS 擋掉時回 0 列而 error 是 null；原本一律跳「會議已刪除」，重新整理才發現還在。
+                if (!data?.length) { toast.error("刪除失敗：沒有權限刪除這場會議"); return; }
                 toast.success("會議已刪除");
                 setDeleteMeeting(null);
                 qc.invalidateQueries({ queryKey: ["eip", "meetings"] });
@@ -553,8 +556,11 @@ function ActionItemsTracker({ meetings, users, userMap }: { meetings: Meeting[];
   }, [itemsQ.data, statusFilter, ownerFilter, onlyOverdue, keyword, today]);
 
   const setStatus = async (id: string, status: ActionStatus) => {
-    const { error } = await supabase.from("meeting_action_item").update({ status }).eq("id", id);
-    if (error) toast.error(humanizeError(error, "更新狀態"));
+    const { data, error } = await supabase
+      .from("meeting_action_item").update({ status }).eq("id", id).select("id");
+    if (error) { toast.error(humanizeError(error, "更新狀態")); return; }
+    // 0 列＝被 RLS 擋掉（error 為 null）。原本會靜默 refetch 讓下拉彈回原值，沒有任何提示。
+    if (!data?.length) { toast.error("更新失敗：沒有權限變更決議事項的狀態"); }
     else qc.invalidateQueries({ queryKey: ["eip", "action-items-all"] });
   };
 

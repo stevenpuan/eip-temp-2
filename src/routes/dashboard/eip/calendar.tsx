@@ -455,10 +455,20 @@ function CalendarPage() {
     if (!peEditing) return;
     if (!confirm("確定刪除此個人行程？")) return;
     setPeSubmitting(true);
-    await supabase.from("personal_event_share").delete().eq("event_id", peEditing.id);
-    const { error } = await supabase.from("personal_event").delete().eq("id", peEditing.id);
+    // personal_event 掛了 BEFORE DELETE 的軟刪除 guard，.delete() 的 ROW_COUNT 一律 0、
+    // error 一律 null → 原本無論如何都跳「已刪除」。改走 eip_soft_delete 檢查 {ok}。
+    // 另外原本會先硬刪 personal_event_share：行程是軟刪除（管理者可還原），分享名單卻
+    // 被真的刪掉，還原之後所有分享對象都不見了，所以這句一併移除。
+    const { data, error } = await supabaseAny.rpc("eip_soft_delete", {
+      p_module: "eip_calendar",
+      p_id: peEditing.id,
+    });
     setPeSubmitting(false);
     if (error) { toast.error(humanizeError(error, "刪除行程")); return; }
+    if ((data as { ok?: boolean; reason?: string } | null)?.ok !== true) {
+      toast.error((data as { reason?: string } | null)?.reason ?? "刪除失敗：只有行程建立者可以刪除");
+      return;
+    }
     setPeOpen(false);
     toast.success("已刪除");
     qc.invalidateQueries({ queryKey: ["cal", "personal"] });

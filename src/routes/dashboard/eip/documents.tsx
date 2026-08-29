@@ -9,6 +9,7 @@ import {
   Bold, Italic, Underline, List, ListOrdered, Link as LinkIcon,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { supabase as supabaseAny } from "@/lib/supabase";
 
 import { useEipUser } from "@/lib/eip-user";
 import { useActiveUsers, useAllUsers } from "@/hooks/useUsers";
@@ -445,10 +446,24 @@ function DocumentsPage() {
                 e.preventDefault();
                 if (!deleteDoc) return;
                 setDeleting(true);
-                await supabase.from("eip_document_version").delete().eq("document_id", deleteDoc.id);
-                const { error } = await supabase.from("eip_document").delete().eq("id", deleteDoc.id);
+                // eip_document 掛了 BEFORE DELETE 的軟刪除 guard（RETURN NULL），所以
+                // .delete() 的 ROW_COUNT 一律是 0、error 一律是 null —— 有沒有權限從前端
+                // 完全分不出來，原本因此一律跳「文件已刪除」。改走 eip_soft_delete RPC，
+                // 它會回 {ok:false, reason} 讓我們如實回報（與任務／異常缺失一致）。
+                // 版本表那句原本是死碼（eip_document_version 沒有 DELETE 政策），一併移除。
+                const { data, error } = await supabaseAny.rpc("eip_soft_delete", {
+                  p_module: "eip_documents",
+                  p_id: deleteDoc.id,
+                });
                 setDeleting(false);
                 if (error) { toast.error(humanizeError(error, "刪除")); return; }
+                if ((data as { ok?: boolean; reason?: string } | null)?.ok !== true) {
+                  toast.error(
+                    (data as { reason?: string } | null)?.reason
+                      ?? "刪除失敗：僅文件負責人 / 該部門主管 / 管理者可刪除這份文件",
+                  );
+                  return;
+                }
                 toast.success("文件已刪除");
                 setDeleteDoc(null);
                 qc.invalidateQueries({ queryKey: ["eip_document"] });
@@ -468,8 +483,12 @@ function DocumentsPage() {
 async function promptCreateFolder(parentId: string | null, tenantId: string, qc: ReturnType<typeof useQueryClient>) {
   const name = window.prompt("資料夾名稱");
   if (!name?.trim()) return;
+  // docfolder_write 政策要 created_by = auth.uid()，這裡沒帶的話建出來的資料夾
+  // 除了系統設計師以外沒有任何人改得動（現有 8 筆就是這樣來的）。
+  const { data: au } = await supabase.auth.getUser();
   const { error } = await supabase.from("eip_doc_folder").insert({
     tenant_id: tenantId, name: name.trim(), parent_id: parentId, sort_order: 0,
+    created_by: au?.user?.id ?? null,
   });
   if (error) return toast.error(humanizeError(error, "建立資料夾"));
   toast.success("已新增資料夾");
@@ -526,15 +545,20 @@ function FolderNode({
   const rename = async () => {
     const name = window.prompt("新名稱", folder.name);
     if (!name?.trim() || name === folder.name) return;
-    const { error } = await supabase.from("eip_doc_folder").update({ name: name.trim() }).eq("id", folder.id);
+    const { data, error } = await supabase
+      .from("eip_doc_folder").update({ name: name.trim() }).eq("id", folder.id).select("id");
     if (error) return toast.error(humanizeError(error, "重新命名"));
+    // 被 RLS 擋掉時 PostgREST 回 0 列而 error 是 null，沒有這道檢查就會把「沒改到」報成「已更新」。
+    if (!data?.length) return toast.error("重新命名失敗：沒有權限修改這個資料夾");
     toast.success("已更新");
     qc.invalidateQueries({ queryKey: ["eip_doc_folder"] });
   };
   const remove = async () => {
     if (!window.confirm(`確定刪除資料夾「${folder.name}」?(子資料夾與文件需先移走)`)) return;
-    const { error } = await supabase.from("eip_doc_folder").delete().eq("id", folder.id);
+    const { data, error } = await supabase
+      .from("eip_doc_folder").delete().eq("id", folder.id).select("id");
     if (error) return toast.error(humanizeError(error, "刪除資料夾"));
+    if (!data?.length) return toast.error("刪除失敗：沒有權限刪除這個資料夾，或裡面還有子資料夾／文件");
     toast.success("已刪除");
     qc.invalidateQueries({ queryKey: ["eip_doc_folder"] });
   };
@@ -645,8 +669,10 @@ function DocDetailDialog({
 
   const publish = async (status: string) => {
     if (!doc) return;
-    const { error } = await supabase.from("eip_document").update({ status }).eq("id", doc.id);
+    const { data, error } = await supabase
+      .from("eip_document").update({ status }).eq("id", doc.id).select("id");
     if (error) return toast.error(humanizeError(error, "更新狀態"));
+    if (!data?.length) return toast.error("更新失敗：沒有權限變更這份文件的狀態");
     toast.success("已更新狀態");
     qc.invalidateQueries({ queryKey: ["eip_document"] });
     qc.invalidateQueries({ queryKey: ["eip_document", doc.id] });
@@ -656,15 +682,26 @@ function DocDetailDialog({
     if (!doc) return;
     if (!window.confirm(`確定以版本 v${v.version_no} 的內容建立新版本?`)) return;
     const newVer = (doc.current_version ?? 0) + 1;
+    const oldVer = doc.current_version ?? 0;
+    // 順序很重要：主檔的 update 與版本表的 insert 是兩條不同的 RLS 政策，條件並不一致。
+    // 先插版本再更新主檔的話，主檔被擋掉（0 列、error 為 null）時會留下一筆版號比
+    // current_version 還大的孤兒版本，重按就會插出重複版號 → 之後讀現行版本會撞
+    // PGRST116，這份文件的儲存會被前端防呆永久擋死。所以先驗主檔寫不寫得動。
+    const { data: dRows, error: dErr } = await supabase
+      .from("eip_document").update({ current_version: newVer }).eq("id", doc.id).select("id");
+    if (dErr) return toast.error(humanizeError(dErr, "更新版號"));
+    if (!dRows?.length) return toast.error("還原失敗：沒有權限修改這份文件");
     const { error: vErr } = await supabase.from("eip_document_version").insert({
       tenant_id: doc.tenant_id, document_id: doc.id, version_no: newVer,
       content: v.content, file_url: v.file_url, file_name: v.file_name,
       storage_path: v.storage_path, file_size: v.file_size, mime_type: v.mime_type,
       note: `還原自 v${v.version_no}`,
     });
-    if (vErr) return toast.error(humanizeError(vErr, "還原版本"));
-    const { error: dErr } = await supabase.from("eip_document").update({ current_version: newVer }).eq("id", doc.id);
-    if (dErr) return toast.error(humanizeError(dErr, "更新版號"));
+    if (vErr) {
+      // 版本沒插成功就把版號改回去，不要讓 current_version 指向不存在的版本
+      await supabase.from("eip_document").update({ current_version: oldVer }).eq("id", doc.id);
+      return toast.error(humanizeError(vErr, "還原版本"));
+    }
     toast.success(`已還原為 v${v.version_no}(產生 v${newVer})`);
     qc.invalidateQueries({ queryKey: ["eip_document"] });
     qc.invalidateQueries({ queryKey: ["eip_document", doc.id] });
@@ -880,14 +917,15 @@ function DocEditorDialog({
 
   const removeExistingAttachment = async () => {
     if (!existingStoragePath) return;
-    if (!window.confirm("確定刪除目前附檔?")) return;
-    const { error } = await supabase.storage.from("documents").remove([existingStoragePath]);
-    if (error) { toast.error(humanizeError(error, "刪除附檔")); return; }
+    if (!window.confirm("確定移除目前附檔?新版本將不含附檔,舊版本仍可下載。")) return;
+    // 原本在這裡就直接 storage.remove()，但：(a) 訊息說「將於儲存後生效」卻是立刻刪，
+    // 使用者按取消也救不回來；(b) storage_path 是各版本共用的同一個物件，刪掉會讓
+    // 所有舊版本的下載變成 404。這裡只清掉表單狀態，實體檔案保留給舊版本使用。
     setExistingStoragePath(null);
     setExistingFileName(null);
     setExistingFileSize(null);
     setExistingMimeType(null);
-    toast.success("附檔已刪除(將於儲存後生效)");
+    toast.success("已移除附檔(儲存後新版本將不含附檔)");
   };
 
   // 上傳檔案到 documents bucket;回傳要寫入版本表的欄位
@@ -956,14 +994,19 @@ function DocEditorDialog({
         if (curVerQ.isLoading) throw new Error("現行版本內容尚未載入完成，請稍候再儲存");
         if (curVerQ.isError) throw new Error("現行版本內容載入失敗，為避免覆蓋成空白已中止儲存，請關閉後重新開啟編輯");
         const att = await uploadIfNeeded(doc.id);
-        const { error: dErr } = await supabase.from("eip_document")
+        const { data: dRows, error: dErr } = await supabase.from("eip_document")
           .update({
             title: title.trim(), folder_id: folderId, doc_type: docType,
             summary: summary.trim() || null, owner_id: ownerId, department_id: departmentId,
             current_version: doc.current_version + 1,
           })
-          .eq("id", doc.id);
+          .eq("id", doc.id)
+          .select("id");
         if (dErr) throw dErr;
+        // document_update 與 docver_insert 是兩條條件不一樣的政策：主檔被擋掉（0 列、
+        // error 為 null）而版本仍插得進去時，畫面會說「已儲存為 vN」但文件還停在舊版，
+        // 重按就插出重複版號讓這份文件再也打不開。0 列一律中止，不要碰版本表。
+        if (!dRows?.length) throw new Error("儲存失敗：沒有權限修改這份文件，內容未寫入");
         const { error: vErr } = await supabase.from("eip_document_version").insert({
           tenant_id: doc.tenant_id, document_id: doc.id,
           version_no: doc.current_version + 1,

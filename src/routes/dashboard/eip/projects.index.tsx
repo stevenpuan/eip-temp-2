@@ -279,9 +279,12 @@ function ProjectsPage() {
                 e.preventDefault();
                 if (!deleteProject) return;
                 setDeleting(true);
-                const { error } = await supabase.from("project").delete().eq("id", deleteProject.id);
+                const { data, error } = await supabase
+                  .from("project").delete().eq("id", deleteProject.id).select("id");
                 setDeleting(false);
                 if (error) { toast.error(humanizeError(error, "刪除")); return; }
+                // 被 RLS 擋掉時回 0 列而 error 是 null；原本一律跳「專案已刪除」。
+                if (!data?.length) { toast.error("刪除失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); return; }
                 toast.success("專案已刪除");
                 setDeleteProject(null);
                 qc.invalidateQueries({ queryKey: ["eip", "projects-full"] });
@@ -463,7 +466,7 @@ function EditProjectDialog({
     const v = validateVisibility(vScope, deptId);
     if (!v.ok) return toast.error(v.error);
     setBusy(true);
-    const { error } = await supabase.from("project").update({
+    const { data, error } = await supabase.from("project").update({
       name: name.trim(),
       goal: goal.trim() || null,
       scope: scope.trim() || null,
@@ -475,9 +478,10 @@ function EditProjectDialog({
       end_date: endDate || null,
       visibility_scope: v.payload.visibility_scope,
       department_id: v.payload.department_id,
-    }).eq("id", project.id);
+    }).eq("id", project.id).select("id");
     setBusy(false);
     if (error) { toast.error(humanizeError(error, "儲存")); return; }
+    if (!data?.length) { toast.error("儲存失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); return; }
     toast.success("已儲存"); onSaved();
   };
 

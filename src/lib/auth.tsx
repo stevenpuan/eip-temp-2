@@ -8,6 +8,7 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { logActivity } from "./logging";
+import { toast } from "sonner";
 
 export type Action = "view" | "create" | "edit" | "delete" | "export";
 export type PermFlags = Record<Action, boolean>;
@@ -63,6 +64,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadUserData = async (uid: string) => {
     try {
       await loadUserDataInner(uid);
+    } catch (e) {
+      // 原本這幾支查詢的 error 都被丟掉：網路抖動或 token 過期時 perms 是空的，
+      // 使用者會看到側邊選單少一半、被導回「我的工作」，只會回報「我的權限不見了」。
+      // 至少要講一聲是載入失敗，不要靜默降權。
+      console.error("[auth] 權限載入失敗", e);
+      toast.error("權限載入失敗，部分選單可能不會出現，請重新整理頁面");
     } finally {
       // 不論成功或失敗都要放行，否則整個 app 會永遠停在「載入中…」。
       // 失敗的情況下 perms 是空的，使用者會被導回我的任務 —— 這比白畫面好，
@@ -73,10 +80,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadUserDataInner = async (uid: string) => {
     // 平行拉 profile + user_roles，減少 RTT
-    const [{ data: prof }, { data: ur }] = await Promise.all([
+    const [{ data: prof, error: pErr }, { data: ur, error: urErr }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
       supabase.from("user_roles").select("role_id, roles(code,name)").eq("user_id", uid),
     ]);
+    if (pErr) throw pErr;
+    if (urErr) throw urErr;
     setProfile((prof as Profile) ?? null);
 
     const rows = (ur ?? []) as unknown as Array<{ role_id: string; roles: { code: string; name: string } | null }>;
@@ -100,10 +109,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // 模組層 + 子頁面層平行拉
-    const [{ data: rmp }, { data: rpp }] = await Promise.all([
+    const [{ data: rmp, error: rmpErr }, { data: rpp, error: rppErr }] = await Promise.all([
       supabase.from("role_module_permissions").select("*").in("role_id", roleIds),
       supabase.from("role_page_permissions").select("*").in("role_id", roleIds),
     ]);
+    if (rmpErr) throw rmpErr;
+    if (rppErr) throw rppErr;
 
     const map: PermMap = {};
     (rmp ?? []).forEach((p: any) => {

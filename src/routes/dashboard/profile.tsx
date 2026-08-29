@@ -26,8 +26,26 @@ function Page() {
 
   const saveProfile = async () => {
     if (!user) return;
-    const { error } = await supabase.from("profiles").update({ full_name: fullName }).eq("id", user.id);
+    const name = fullName.trim();
+    if (!name) { toast.error("姓名不可空白"); return; }
+    const { data: pRow, error } = await supabase
+      .from("profiles").update({ full_name: name }).eq("id", user.id).select("id");
     if (error) { toast.error(humanizeError(error, "更新個人資料")); return; }
+    if (!pRow?.length) { toast.error("更新個人資料失敗：沒有寫入任何資料，請重新整理後再試"); return; }
+    // 全站顯示姓名讀的是 app_user.name，不是 profiles.full_name。
+    // profiles 的同步觸發器只有 AFTER INSERT，而且是 coalesce(app_user.name, ...)（舊名非空就不覆寫），
+    // 所以這裡必須自己一起寫，否則改了名字任務、會議、日誌上還是舊名字，而且永遠不會變。
+    const { data: uRow, error: uErr } = await supabase
+      .from("app_user").update({ name }).eq("id", user.id).select("id");
+    if (uErr || !uRow?.length) {
+      toast.error(
+        uErr
+          ? `姓名只更新了一半：${humanizeError(uErr, "同步人員名冊")}。任務與會議上仍會顯示舊名字，請重試。`
+          : "姓名只更新了一半：人員名冊沒有寫入，任務與會議上仍會顯示舊名字，請重試。",
+      );
+      await refresh();
+      return;
+    }
     toast.success("已更新個人資料");
     await refresh();
   };

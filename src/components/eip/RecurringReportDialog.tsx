@@ -59,20 +59,25 @@ export function RecurringReportDialog({
         report_data: values,
       };
       if (markDone) {
-        const { data: doneStatus } = await supabase
+        const { data: doneStatus, error: stErr } = await supabase
           .from("task_status")
           .select("id")
           .eq("is_done_state", true)
           .order("sort_order")
           .limit(1)
           .maybeSingle();
-        if (doneStatus?.id) {
-          patch.status_id = doneStatus.id;
-          patch.progress = 100;
-        }
+        // 原本 error 被丟掉：查詢失敗時 doneStatus 是 null，程式靜靜地跳過完成狀態，
+        // 只寫 report_data 就跳「已回報」。使用者以為結案了，任務其實還在算逾期。
+        if (stErr) throw stErr;
+        if (!doneStatus?.id) throw new Error("找不到「已完成」的任務狀態，無法標記完成，請聯絡管理員");
+        patch.status_id = doneStatus.id;
+        patch.progress = 100;
       }
-      const { error } = await supabase.from("task").update(patch as never).eq("id", taskId);
+      const { data, error } = await supabase
+        .from("task").update(patch as never).eq("id", taskId).select("id");
       if (error) throw error;
+      // 被 RLS 擋掉時回 0 列而 error 是 null
+      if (!data?.length) throw new Error("回報失敗：沒有權限更新這筆任務，內容未寫入");
       toast.success("已回報");
       onDone?.();
       onClose();

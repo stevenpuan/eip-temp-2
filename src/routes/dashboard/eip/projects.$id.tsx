@@ -168,17 +168,24 @@ function ProjectDetailPage() {
   const totalMs = milestones.length;
   const avgMsProgress = totalMs ? Math.round(milestones.reduce((s, m) => s + (m.progress ?? 0), 0) / totalMs) : 0;
   const overallProgress = Math.round((taskRate + avgMsProgress) / (totalMs ? 2 : 1));
+  // new Date("YYYY-MM-DD") 是 UTC 午夜＝台北早上 8 點，直接相減會讓截止日隔天的
+  // 凌晨 0–8 點顯示「剩 0 天」而不是已逾期。補上 T00:00:00 用本地午夜比較
+  //（列表頁 projects.index.tsx 已經是這個寫法）。
   const today = new Date();
   const daysLeft = project.end_date
-    ? Math.ceil((new Date(project.end_date).getTime() - today.getTime()) / 86400000)
+    ? Math.ceil((new Date(project.end_date + "T00:00:00").getTime() - today.getTime()) / 86400000)
     : null;
 
   const refetchProject = () => qc.invalidateQueries({ queryKey: ["eip", "project", id] });
 
   const saveProject = async (patch: Partial<Project>) => {
-    const { error } = await supabase.from("project").update(patch).eq("id", project.id);
-    if (error) toast.error(humanizeError(error, "儲存專案"));
-    else { toast.success("已儲存"); refetchProject(); }
+    const { data, error } = await supabase
+      .from("project").update(patch).eq("id", project.id).select("id");
+    if (error) { toast.error(humanizeError(error, "儲存專案")); return; }
+    // 被 RLS 擋掉時回 0 列而 error 是 null。這頁的 UPDATE／DELETE 原本全都只看 error，
+    // 於是「改」和「刪」都跳成功、refetch 後彈回原值（新增反而會正確報 42501）。
+    if (!data?.length) { toast.error("儲存失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); refetchProject(); return; }
+    toast.success("已儲存"); refetchProject();
   };
 
   return (
@@ -323,8 +330,10 @@ function KpiSection({ projectId, tenantId, kpis, canEdit }: { projectId: string;
   const refetch = () => qc.invalidateQueries({ queryKey: ["eip", "project-kpis", projectId] });
 
   const remove = async (k: Kpi) => {
-    const { error } = await supabase.from("project_kpi").delete().eq("id", k.id);
-    if (error) toast.error(humanizeError(error, "刪除 KPI")); else { toast.success("已刪除"); refetch(); }
+    const { data, error } = await supabase.from("project_kpi").delete().eq("id", k.id).select("id");
+    if (error) { toast.error(humanizeError(error, "刪除 KPI")); return; }
+    if (!data?.length) { toast.error("刪除失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); return; }
+    toast.success("已刪除"); refetch();
   };
 
   return (
@@ -399,11 +408,13 @@ function KpiDialog({ kpi, projectId, tenantId, onClose, onSaved }: { kpi: Kpi | 
       current_value: current.trim() || null,
       unit: unit.trim() || null,
     };
-    const { error } = kpi
-      ? await supabase.from("project_kpi").update(payload).eq("id", kpi.id)
-      : await supabase.from("project_kpi").insert(payload);
+    const { data, error } = kpi
+      ? await supabase.from("project_kpi").update(payload).eq("id", kpi.id).select("id")
+      : await supabase.from("project_kpi").insert(payload).select("id");
     setBusy(false);
-    if (error) toast.error(humanizeError(error, "儲存 KPI")); else { toast.success("已儲存"); onSaved(); }
+    if (error) { toast.error(humanizeError(error, "儲存 KPI")); return; }
+    if (!data?.length) { toast.error("儲存失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); return; }
+    toast.success("已儲存"); onSaved();
   };
 
   return (
@@ -458,16 +469,28 @@ function MilestonesSection({ projectId, tenantId, milestones, canEdit, highlight
   };
   const toggle = async (m: Milestone) => {
     const next = m.status === "done" ? "pending" : "done";
-    const { error } = await supabase.from("milestone").update({ status: next, progress: next === "done" ? 100 : m.progress }).eq("id", m.id);
-    if (error) toast.error(humanizeError(error, "更新里程碑")); else refetch();
+    const { data, error } = await supabase.from("milestone")
+      .update({ status: next, progress: next === "done" ? 100 : m.progress }).eq("id", m.id).select("id");
+    if (error) { toast.error(humanizeError(error, "更新里程碑")); return; }
+    if (!data?.length) { toast.error("更新失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); refetch(); return; }
+    refetch();
   };
   const setProgress = async (m: Milestone, v: number) => {
-    const { error } = await supabase.from("milestone").update({ progress: v }).eq("id", m.id);
-    if (error) toast.error(humanizeError(error, "更新進度")); else refetch();
+    // 夾在 0–100：DB 有 milestone_progress_check，超出範圍會回 23514
+    if (!Number.isFinite(v)) return;
+    const val = Math.max(0, Math.min(100, Math.round(v)));
+    if (val === (m.progress ?? 0)) return;
+    const { data, error } = await supabase.from("milestone")
+      .update({ progress: val }).eq("id", m.id).select("id");
+    if (error) { toast.error(humanizeError(error, "更新進度")); return; }
+    if (!data?.length) { toast.error("更新失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); refetch(); return; }
+    refetch();
   };
   const remove = async (m: Milestone) => {
-    const { error } = await supabase.from("milestone").delete().eq("id", m.id);
-    if (error) toast.error(humanizeError(error, "刪除里程碑")); else refetch();
+    const { data, error } = await supabase.from("milestone").delete().eq("id", m.id).select("id");
+    if (error) { toast.error(humanizeError(error, "刪除里程碑")); return; }
+    if (!data?.length) { toast.error("刪除失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); return; }
+    refetch();
   };
 
   return (
@@ -498,7 +521,13 @@ function MilestonesSection({ projectId, tenantId, milestones, canEdit, highlight
                   </div>
                   {canEdit && (
                     <>
-                      <Input type="number" min={0} max={100} value={m.progress} onChange={(e) => setProgress(m, Number(e.target.value))} className="w-20 h-8" />
+                      <Input
+                        type="number" min={0} max={100} defaultValue={m.progress ?? 0}
+                        key={`${m.id}-${m.progress ?? 0}`}
+                        /* 改成 onBlur：原本 onChange 每敲一鍵就寫一次庫（輸入 50 會先寫 5 再寫 50），
+                           而且把欄位清空時 Number("") === 0 會直接把進度歸零。 */
+                        onBlur={(e) => { const raw = e.target.value.trim(); if (raw !== "") void setProgress(m, Number(raw)); }}
+                        className="w-20 h-8" />
                       <button onClick={() => remove(m)} className="text-muted-foreground hover:text-destructive p-1" aria-label="刪除"><Trash2 className="w-3.5 h-3.5" /></button>
                     </>
                   )}
@@ -681,8 +710,10 @@ function RisksSection({ projectId, tenantId, risks, canEdit }: { projectId: stri
   const refetch = () => qc.invalidateQueries({ queryKey: ["eip", "project-risks", projectId] });
 
   const remove = async (r: Risk) => {
-    const { error } = await supabase.from("project_risk").delete().eq("id", r.id);
-    if (error) toast.error(humanizeError(error, "刪除風險")); else { toast.success("已刪除"); refetch(); }
+    const { data, error } = await supabase.from("project_risk").delete().eq("id", r.id).select("id");
+    if (error) { toast.error(humanizeError(error, "刪除風險")); return; }
+    if (!data?.length) { toast.error("刪除失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); return; }
+    toast.success("已刪除"); refetch();
   };
 
   return (
@@ -749,11 +780,13 @@ function RiskDialog({ risk, projectId, tenantId, onClose, onSaved }: { risk: Ris
       project_id: projectId, tenant_id: tenantId,
       title: title.trim(), likelihood, impact, status, mitigation: mitigation.trim() || null,
     };
-    const { error } = risk
-      ? await supabase.from("project_risk").update(payload).eq("id", risk.id)
-      : await supabase.from("project_risk").insert(payload);
+    const { data, error } = risk
+      ? await supabase.from("project_risk").update(payload).eq("id", risk.id).select("id")
+      : await supabase.from("project_risk").insert(payload).select("id");
     setBusy(false);
-    if (error) toast.error(humanizeError(error, "儲存風險")); else { toast.success("已儲存"); onSaved(); }
+    if (error) { toast.error(humanizeError(error, "儲存風險")); return; }
+    if (!data?.length) { toast.error("儲存失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); return; }
+    toast.success("已儲存"); onSaved();
   };
 
   return (
@@ -813,17 +846,23 @@ function MeetingsSection({ projectId, meetings, canEdit }: { projectId: string; 
   const link = async () => {
     if (!selectedId) return toast.error("請選擇會議");
     setBusy(true);
-    const { error } = await supabase.from("meeting").update({ project_id: projectId }).eq("id", selectedId);
+    const { data, error } = await supabase
+      .from("meeting").update({ project_id: projectId }).eq("id", selectedId).select("id");
     setBusy(false);
     if (error) { toast.error(humanizeError(error, "關聯")); return; }
+    // 這是寫 meeting 這張表，受 meeting_write 管（會議建立者／管轄主管／管理者），
+    // 跟能不能編輯專案是兩回事，所以這裡的 0 列很常見。
+    if (!data?.length) { toast.error("關聯失敗：沒有權限修改這場會議（需為會議建立者或該部門主管）"); return; }
     toast.success("已關聯");
     setSelectedId(""); setLinkOpen(false);
     qc.invalidateQueries({ queryKey: ["eip", "project-meetings", projectId] });
   };
 
   const unlink = async (mId: string) => {
-    const { error } = await supabase.from("meeting").update({ project_id: null }).eq("id", mId);
+    const { data, error } = await supabase
+      .from("meeting").update({ project_id: null }).eq("id", mId).select("id");
     if (error) { toast.error(humanizeError(error, "取消關聯")); return; }
+    if (!data?.length) { toast.error("取消關聯失敗：沒有權限修改這場會議"); return; }
     toast.success("已取消關聯");
     qc.invalidateQueries({ queryKey: ["eip", "project-meetings", projectId] });
   };
@@ -915,13 +954,17 @@ function MembersSection({
   const refetch = () => qc.invalidateQueries({ queryKey: ["eip", "project-members", projectId] });
 
   const addMember = async (uid: string) => {
-    const { error } = await supabase.from("project_member").insert({ project_id: projectId, user_id: uid, role: "member" });
+    const { data, error } = await supabase.from("project_member")
+      .insert({ project_id: projectId, user_id: uid, role: "member" }).select("user_id");
     if (error) { toast.error(humanizeError(error, "加入成員")); return; }
+    if (!data?.length) { toast.error("加入失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); return; }
     toast.success("已加入成員"); refetch();
   };
   const removeMember = async (uid: string) => {
-    const { error } = await supabase.from("project_member").delete().eq("project_id", projectId).eq("user_id", uid);
+    const { data, error } = await supabase.from("project_member").delete()
+      .eq("project_id", projectId).eq("user_id", uid).select("user_id");
     if (error) { toast.error(humanizeError(error, "移除成員")); return; }
+    if (!data?.length) { toast.error("移除失敗：沒有權限修改這個專案（僅專案負責人 / 專案成員 / 管理者）"); return; }
     toast.success("已移除成員"); refetch();
   };
 

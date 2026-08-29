@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RequirePerm } from "@/components/RequirePerm";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Plus, X, Check, Send, ListChecks, Clock, Zap, Inbox, Search, RefreshCw, Trash2, Paperclip, Download, UploadCloud, ChevronDown, History } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
@@ -70,13 +70,19 @@ function WorkLogPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // reqRef：快速連點日期時，先發後到的舊回應會蓋掉新日期的內容 —— 畫面日期顯示 8/28、
+  // 內容卻是 8/26 的，接著按「儲存草稿」就會用 state 的日期(8/28)配上舊內容寫進去，
+  // 把 8/26 的項目整包存進 8/28 的日誌。部門日誌頁已經用同樣方式修好了。
+  const reqRef = useRef(0);
   const load = async () => {
+    const seq = ++reqRef.current;
     if (!appUser?.id) return;
     setLoading(true);
     setLoadError(null);
     // 先確實檢查 error：token 過期(PGRST301)、RLS、斷線時 data 會是 null，
     // 若不分辨錯誤就落到 fetchSeed，會顯示一張空白草稿讓使用者誤以為日誌不見了。
     const { data, error } = await supabase.from("work_log").select("*").eq("user_id", appUser.id).eq("log_date", date).maybeSingle();
+    if (seq !== reqRef.current) return; // 已經有更新的請求發出，這份結果作廢
     if (error) {
       setLog(null);
       setLoadError(humanizeError(error));
@@ -90,8 +96,10 @@ function WorkLogPage() {
     } else {
       // 確認查詢成功、只是今天還沒有日誌，才給空白 seed 草稿。
       const seed = await fetchSeed(appUser.id, date);
+      if (seq !== reqRef.current) return; // 帶入期間使用者又切了日期
       setLog({ log_date: date, morning: seed.morning, afternoon: seed.afternoon, special: seed.special, status: "draft" });
     }
+    if (seq !== reqRef.current) return;
     setLoading(false);
   };
   useEffect(() => { void load(); /* eslint-disable-next-line */ }, [appUser?.id, date, refreshKey]);

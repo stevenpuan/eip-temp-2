@@ -50,7 +50,14 @@ function LoginPage() {
     });
     setBusy(false);
     if (error) {
-      setError("員工編號或密碼錯誤");
+      // 原本一律報「員工編號或密碼錯誤」：被 rate limit 鎖住的人會繼續重試而鎖更久，
+      // Supabase 中斷時也是同一句話，沒有人會回報系統故障。只有真的憑證不符才這樣寫。
+      const code = (error as { code?: string }).code;
+      setError(
+        code === "invalid_credentials" || code === "invalid_grant"
+          ? "員工編號或密碼錯誤"
+          : humanizeError(error, "登入"),
+      );
       return;
     }
     await logActivity("login");
@@ -75,8 +82,13 @@ function LoginPage() {
       return;
     }
     if (invite && signUpData.session) {
-      const { data: res } = await supabase.rpc("redeem_invitation", { p_code: invite });
+      const { data: res, error: rErr } = await supabase.rpc("redeem_invitation", { p_code: invite });
       setBusy(false);
+      if (rErr) {
+        // 原本 error 被丟掉，RPC 失敗一律被報成「邀請碼無效」，新人會去要一組新碼，方向完全錯。
+        toast.error(`${humanizeError(rErr, "啟用邀請碼")}。帳號已建立，請稍後重試或聯絡管理員。`);
+        return;
+      }
       if (res === "ok") {
         await logActivity("login");
         toast.success("註冊成功，已啟用！");
@@ -84,6 +96,12 @@ function LoginPage() {
         return;
       }
       toast.message("邀請碼無效或已過期，帳號待管理員審核");
+      return;
+    }
+    if (invite && !signUpData.session) {
+      // 需要驗證信箱時沒有 session，邀請碼原本會被靜默丟掉、之後無處可用。
+      setBusy(false);
+      toast.message("註冊成功！請先完成信箱驗證再登入，登入後邀請碼會自動啟用。");
       return;
     }
     setBusy(false);

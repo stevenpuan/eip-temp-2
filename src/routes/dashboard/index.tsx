@@ -20,6 +20,10 @@ function DashboardHome() {
         supabase.from("dev_todos").select("*", { count: "exact", head: true }).eq("status", "todo"),
         supabase.from("issue_reports").select("*", { count: "exact", head: true }).eq("status", "open"),
       ]);
+      // 原本 error 被丟掉，失敗時兩張卡都顯示 0，看起來像「今天沒事」。
+      // 拋出去讓 useQuery 進 isError，與 EipDashboardSummary 的處理一致。
+      if (todos.error) throw todos.error;
+      if (issues.error) throw issues.error;
       return {
         todos: todos.count ?? 0,
         issues: issues.count ?? 0,
@@ -32,11 +36,13 @@ function DashboardHome() {
     queryKey: ["eip", "handover-pending-count", profile?.id],
     enabled: !!profile?.id && can("eip_handover", "view"),
     queryFn: async () => {
-      const { count } = await supabase
+      const { count, error } = await supabase
         .from("eip_handover_item")
         .select("*", { count: "exact", head: true })
         .eq("status", "pending")
         .eq("assignee_id", profile!.id);
+      // 這張卡是 count > 0 才渲染，所以查詢失敗＝卡片整張消失，主管不會發現有待辦。
+      if (error) throw error;
       return count ?? 0;
     },
   });

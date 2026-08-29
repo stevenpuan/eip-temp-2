@@ -245,18 +245,24 @@ function RecurringPage() {
   const refresh = () => qc.invalidateQueries({ queryKey: ["eip", "recurring"] });
 
   const toggleActive = async (r: Rule) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("recurring_rule")
       .update({ is_active: !r.is_active })
-      .eq("id", r.id);
-    if (error) toast.error(humanizeError(error, "更新狀態"));
-    else { toast.success(r.is_active ? "已停用" : "已啟用"); refresh(); }
+      .eq("id", r.id)
+      .select("id");
+    if (error) { toast.error(humanizeError(error, "更新狀態")); return; }
+    // 被 RLS 擋掉時回 0 列而 error 是 null。原本會跳「已停用」然後開關彈回，
+    // 使用者以為畫面卡住而重複點。
+    if (!data?.length) { toast.error("更新失敗：沒有權限修改這條規則（僅規則負責人 / 該部門主管 / 管理者）"); refresh(); return; }
+    toast.success(r.is_active ? "已停用" : "已啟用"); refresh();
   };
   const remove = async (r: Rule) => {
     if (!confirm(`確定刪除「${r.title}」？`)) return;
-    const { error } = await supabase.from("recurring_rule").delete().eq("id", r.id);
-    if (error) toast.error(humanizeError(error, "刪除"));
-    else { toast.success("已刪除"); refresh(); }
+    const { data, error } = await supabase
+      .from("recurring_rule").delete().eq("id", r.id).select("id");
+    if (error) { toast.error(humanizeError(error, "刪除")); return; }
+    if (!data?.length) { toast.error("刪除失敗：沒有權限修改這條規則（僅規則負責人 / 該部門主管 / 管理者）"); return; }
+    toast.success("已刪除"); refresh();
   };
   const runNow = async () => {
     if (running) return;
@@ -505,8 +511,10 @@ function RuleDialog({
       };
       if (rule) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await supabase.from("recurring_rule").update(payload as any).eq("id", rule.id);
+        const { data, error } = await supabase
+          .from("recurring_rule").update(payload as any).eq("id", rule.id).select("id");
         if (error) throw error;
+        if (!data?.length) throw new Error("儲存失敗：沒有權限修改這條規則（僅規則負責人 / 該部門主管 / 管理者）");
         toast.success("已更新");
       } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

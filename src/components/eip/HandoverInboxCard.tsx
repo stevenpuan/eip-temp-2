@@ -134,17 +134,25 @@ export function HandoverInboxCard({ meId }: { meId: string }) {
     queryFn: async () => {
       // 抓「指派給我」的全部項目（含已完成），因為原型要顯示 x/y 與完成時間。
       // 分組與過濾在下面做，不在這裡先砍掉已完成的。
+      // 撈取順序改成 created_at 新到舊，再在前端依 sort_order 排回卡片內的顯示順序。
+      // 原本直接 order("sort_order") + limit(200)：sort_order 每張假單各自從 0 開始、
+      // 跨假單大量重複，Postgres 對並列列的取捨是不定的，累積超過 200 筆之後
+      // 新指派的代辦可能根本不在回傳的 200 筆裡 —— 收件匣不顯示、徽章也漏算，
+      // 代理人不知道有事要做。卡片內的排序（拖拉結果）仍然照 sort_order。
       const { data, error } = await supabase
         .from("eip_leave_handover_item")
-        .select("id,title,url,quick_report_id,done_at")
+        .select("id,title,url,quick_report_id,done_at,sort_order")
         .eq("assignee_id", meId)
-        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
         .limit(200);
       if (error) throw error;
-      const items = (data ?? []) as unknown as Omit<
+      const items = ((data ?? []) as unknown as (Omit<
         LeaveRow,
         "submitter_id" | "leave_from" | "leave_to" | "report_unreadable"
-      >[];
+      > & { sort_order: number | null })[]).sort(
+        (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
+      );
       if (items.length === 0) return [] as LeaveRow[];
 
       // 請假人與區間分開查：這張表還沒進 types.ts，巢狀 select 的關聯名稱無法用型別驗證，
@@ -165,7 +173,7 @@ export function HandoverInboxCard({ meId }: { meId: string }) {
           }[]
         ).map((r) => [r.id, r]),
       );
-      return items.map((i) => {
+      return items.map(({ sort_order: _sortOrder, ...i }) => {
         const rep = byId.get(i.quick_report_id);
         return {
           ...i,

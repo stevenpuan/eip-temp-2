@@ -2,6 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Bell, CheckCheck, Trash2, ClipboardList, RefreshCw, CalendarClock, AlertTriangle, Megaphone, FileText, Inbox, Stamp, UserMinus, UserCheck, ShieldAlert, ClipboardCheck, CircleCheckBig } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { humanizeError } from "@/lib/eip-error";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 
@@ -49,12 +51,17 @@ function NotificationsPage() {
   const [items, setItems] = useState<Notif[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
+  // loadError：原本查詢完全不接 error，token 過期或斷線時 data 是 null → items=[] →
+  // 畫面顯示「目前沒有通知」，使用者以為真的沒事，會錯過催填、逾期、缺失開立這些通知。
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = async () => {
     if (!user?.id) return;
-    const { data } = await supabase.from("notification")
+    const { data, error } = await supabase.from("notification")
       .select("id,message,type,entity_type,entity_id,is_read,created_at")
       .eq("user_id", user.id).order("created_at", { ascending: false }).limit(200);
+    if (error) { setLoadError(humanizeError(error, "載入通知")); setLoading(false); return; }
+    setLoadError(null);
     setItems((data ?? []) as Notif[]);
     setLoading(false);
   };
@@ -77,12 +84,16 @@ function NotificationsPage() {
 
   const markAll = async () => {
     if (!user?.id) return;
-    await supabase.from("notification").update({ is_read: true }).eq("user_id", user.id).eq("is_read", false);
+    const { error } = await supabase.from("notification")
+      .update({ is_read: true }).eq("user_id", user.id).eq("is_read", false);
+    if (error) { toast.error(humanizeError(error, "全部標為已讀")); return; }
     void load();
   };
   const clearRead = async () => {
     if (!user?.id) return;
-    await supabase.from("notification").delete().eq("user_id", user.id).eq("is_read", true);
+    const { error } = await supabase.from("notification")
+      .delete().eq("user_id", user.id).eq("is_read", true);
+    if (error) { toast.error(humanizeError(error, "清除已讀")); return; }
     void load();
   };
   const open = async (n: Notif) => {
@@ -132,7 +143,12 @@ function NotificationsPage() {
         ))}
       </div>
 
-      {loading ? (
+      {loadError ? (
+        <div className="border border-destructive/40 rounded-2xl py-10 text-center bg-destructive/5">
+          <p className="text-sm text-destructive">通知載入失敗：{loadError}</p>
+          <p className="text-xs text-muted-foreground mt-1">這不代表沒有通知，請重新整理後再試。</p>
+        </div>
+      ) : loading ? (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => <div key={i} className="h-16 rounded-2xl bg-muted/50 animate-pulse" />)}
         </div>

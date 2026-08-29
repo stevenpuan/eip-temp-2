@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, Save, Trash2, Plus, ChevronUp, ChevronDown, X, ExternalLink, MapPin } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { supabase as supabaseAny } from "@/lib/supabase";
 import { useEipUser } from "@/lib/eip-user";
 import { useActiveUsers, useAllUsers } from "@/hooks/useUsers";
 import { useAuth } from "@/lib/auth";
@@ -220,7 +221,7 @@ function HeaderSection({
     const v = validateVisibility(vScope, deptId);
     if (!v.ok) return toast.error(v.error);
     setSaving(true);
-    const { error } = await supabase.from("meeting").update({
+    const { data, error } = await supabase.from("meeting").update({
       title: title.trim(),
       meeting_date: new Date(dateStr).toISOString(),
       location: location.trim() || null,
@@ -229,16 +230,20 @@ function HeaderSection({
       project_id: projectId === "none" ? null : projectId,
       visibility_scope: v.payload.visibility_scope,
       department_id: v.payload.department_id,
-    }).eq("id", meeting.id);
+    }).eq("id", meeting.id).select("id");
     setSaving(false);
-    if (error) toast.error(humanizeError(error, "儲存"));
-    else { toast.success("已儲存"); onUpdated(); }
+    if (error) { toast.error(humanizeError(error, "儲存")); return; }
+    // 被 RLS 擋掉時 PostgREST 回 0 列而 error 是 null，沒有這道檢查就會把「什麼都沒寫進去」報成成功。
+    if (!data?.length) { toast.error("儲存失敗：沒有權限修改這場會議，內容未寫入"); return; }
+    toast.success("已儲存"); onUpdated();
   };
 
   const quickStatus = async (s: MeetingStatus) => {
     setStatus(s);
-    const { error } = await supabase.from("meeting").update({ status: s }).eq("id", meeting.id);
-    if (error) toast.error(humanizeError(error, "更新狀態")); else { toast.success("狀態已更新"); onUpdated(); }
+    const { data, error } = await supabase.from("meeting").update({ status: s }).eq("id", meeting.id).select("id");
+    if (error) { toast.error(humanizeError(error, "更新狀態")); return; }
+    if (!data?.length) { toast.error("更新失敗：沒有權限修改這場會議"); onUpdated(); return; }
+    toast.success("狀態已更新"); onUpdated();
   };
 
   const project = projects.find((p) => p.id === meeting.project_id);
@@ -342,13 +347,14 @@ function HeaderSection({
                 onClick={async (e) => {
                   e.preventDefault();
                   setDeleting(true);
-                  const { error } = await supabase.from("meeting").delete().eq("id", meeting.id);
+                  const { data, error } = await supabase
+                    .from("meeting").delete().eq("id", meeting.id).select("id");
                   setDeleting(false);
-                  if (error) toast.error(humanizeError(error, "刪除會議"));
-                  else {
-                    toast.success("會議已刪除");
-                    navigate({ to: "/dashboard/eip/meetings" });
-                  }
+                  if (error) { toast.error(humanizeError(error, "刪除會議")); return; }
+                  // 0 列＝被 RLS 擋掉。原本會直接導回列表，使用者以為刪掉了，回列表才發現還在。
+                  if (!data?.length) { toast.error("刪除失敗：沒有權限刪除這場會議"); return; }
+                  toast.success("會議已刪除");
+                  navigate({ to: "/dashboard/eip/meetings" });
                 }}
               >
                 {deleting ? "刪除中…" : "確認刪除"}
@@ -392,16 +398,18 @@ function AttendeesSection({
     else qc.invalidateQueries({ queryKey: ["eip", "meeting-attendees-full", meetingId] });
   };
   const removeUser = async (uid: string) => {
-    const { error } = await supabase.from("meeting_attendee").delete()
-      .eq("meeting_id", meetingId).eq("user_id", uid);
-    if (error) toast.error(humanizeError(error, "移除出席者"));
-    else qc.invalidateQueries({ queryKey: ["eip", "meeting-attendees-full", meetingId] });
+    const { data, error } = await supabase.from("meeting_attendee").delete()
+      .eq("meeting_id", meetingId).eq("user_id", uid).select("user_id");
+    if (error) { toast.error(humanizeError(error, "移除出席者")); return; }
+    if (!data?.length) { toast.error("移除失敗：沒有權限修改這場會議的出席名單"); return; }
+    qc.invalidateQueries({ queryKey: ["eip", "meeting-attendees-full", meetingId] });
   };
   const updateAttendee = async (uid: string, patch: Partial<Attendee>) => {
-    const { error } = await supabase.from("meeting_attendee").update(patch)
-      .eq("meeting_id", meetingId).eq("user_id", uid);
-    if (error) toast.error(humanizeError(error, "更新出席者"));
-    else qc.invalidateQueries({ queryKey: ["eip", "meeting-attendees-full", meetingId] });
+    const { data, error } = await supabase.from("meeting_attendee").update(patch)
+      .eq("meeting_id", meetingId).eq("user_id", uid).select("user_id");
+    if (error) { toast.error(humanizeError(error, "更新出席者")); return; }
+    if (!data?.length) { toast.error("更新失敗：沒有權限修改這場會議的出席名單"); return; }
+    qc.invalidateQueries({ queryKey: ["eip", "meeting-attendees-full", meetingId] });
   };
 
   const presentIds = new Set(list.map((a) => a.user_id));
@@ -544,8 +552,11 @@ function AgendaSection({
   };
 
   const remove = async (id: string) => {
-    const { error } = await supabase.from("meeting_agenda_item").delete().eq("id", id);
-    if (error) toast.error(humanizeError(error, "刪除議程")); else refresh();
+    const { data, error } = await supabase
+      .from("meeting_agenda_item").delete().eq("id", id).select("id");
+    if (error) { toast.error(humanizeError(error, "刪除議程")); return; }
+    if (!data?.length) { toast.error("刪除失敗：沒有權限修改這場會議的議程"); return; }
+    refresh();
   };
 
   const move = async (it: AgendaItem, dir: -1 | 1) => {
@@ -553,8 +564,21 @@ function AgendaSection({
     const idx = sorted.findIndex((x) => x.id === it.id);
     const swap = sorted[idx + dir];
     if (!swap) return;
-    await supabase.from("meeting_agenda_item").update({ sort_order: swap.sort_order }).eq("id", it.id);
-    await supabase.from("meeting_agenda_item").update({ sort_order: it.sort_order }).eq("id", swap.id);
+    // 兩次 update 都要驗：只成功一半會留下兩筆相同的 sort_order，之後順序不穩定，
+    // 而且原本全程沒有任何錯誤訊息。第一次就失敗代表沒權限，直接中止不要動第二筆。
+    const { data: d1, error: e1 } = await supabase
+      .from("meeting_agenda_item").update({ sort_order: swap.sort_order }).eq("id", it.id).select("id");
+    if (e1) { toast.error(humanizeError(e1, "調整順序")); return; }
+    if (!d1?.length) { toast.error("調整順序失敗：沒有權限修改這場會議的議程"); return; }
+    const { data: d2, error: e2 } = await supabase
+      .from("meeting_agenda_item").update({ sort_order: it.sort_order }).eq("id", swap.id).select("id");
+    if (e2 || !d2?.length) {
+      // 把第一筆改回去，避免兩筆同號
+      await supabase.from("meeting_agenda_item").update({ sort_order: it.sort_order }).eq("id", it.id);
+      toast.error(e2 ? humanizeError(e2, "調整順序") : "調整順序失敗，已還原");
+      refresh();
+      return;
+    }
     refresh();
   };
 
@@ -700,14 +724,18 @@ function ActionItemsSection({
   };
 
   const setStatus = async (id: string, status: ActionStatus) => {
-    const { error } = await supabase.from("meeting_action_item").update({ status }).eq("id", id);
-    if (error) toast.error(humanizeError(error, "更新狀態")); else refresh();
+    const { data, error } = await supabase
+      .from("meeting_action_item").update({ status }).eq("id", id).select("id");
+    if (error) { toast.error(humanizeError(error, "更新狀態")); return; }
+    if (!data?.length) { toast.error("更新失敗：沒有權限變更決議事項的狀態"); refresh(); return; }
+    refresh();
   };
 
   const convertToTask = async (item: ActionItem) => {
     if (!appUser) return;
-    const { data: defStatus } = await supabase
+    const { data: defStatus, error: stErr } = await supabase
       .from("task_status").select("id").eq("is_default", true).maybeSingle();
+    if (stErr) return toast.error(humanizeError(stErr, "轉任務"));
     const statusId = defStatus?.id;
     if (!statusId) return toast.error("找不到預設任務狀態");
     const { data: task, error } = await supabase.from("task").insert({
@@ -721,8 +749,22 @@ function ActionItemsSection({
       created_by: appUser.id,
     }).select("id").single();
     if (error || !task) return toast.error(error ? humanizeError(error, "轉任務") : "轉任務失敗：任務沒有建立成功，請重新整理頁面確認後再試");
-    await supabase.from("meeting_action_item")
-      .update({ status: "converted", linked_task_id: task.id }).eq("id", item.id);
+    // task 的 INSERT 政策比 meeting_action_item 的 UPDATE 政策寬鬆：任務會建立成功，
+    // 但回寫「已轉任務」可能被擋（0 列、error 為 null）。原本沒有檢查，於是決議事項
+    // 仍是「待處理」、按鈕還在 —— 使用者再按一次就又建一筆重複任務。
+    const { data: linked, error: linkErr } = await supabase.from("meeting_action_item")
+      .update({ status: "converted", linked_task_id: task.id }).eq("id", item.id).select("id");
+    if (linkErr || !linked?.length) {
+      // 把剛剛建立的任務收回去，不要留下孤兒任務（task 有軟刪除 guard，要走 RPC）
+      await supabaseAny.rpc("eip_soft_delete", { p_module: "eip_tasks", p_id: task.id });
+      toast.error(
+        linkErr
+          ? humanizeError(linkErr, "轉任務")
+          : "轉任務失敗：沒有權限變更這筆決議事項，已取消剛才建立的任務",
+      );
+      refresh();
+      return;
+    }
     toast.success("已轉為任務");
     refresh();
   };
@@ -819,10 +861,13 @@ function NotesSection({
 
   const save = async () => {
     setSaving(true);
-    const { error } = await supabase.from("meeting").update({ notes }).eq("id", meeting.id);
+    const { data, error } = await supabase
+      .from("meeting").update({ notes }).eq("id", meeting.id).select("id");
     setSaving(false);
-    if (error) toast.error(humanizeError(error, "儲存會議紀錄"));
-    else { toast.success("會議紀錄已儲存"); onSaved(); }
+    if (error) { toast.error(humanizeError(error, "儲存會議紀錄")); return; }
+    // 這一條最痛：打完整頁會議紀錄、看到綠色成功訊息、關掉分頁，紀錄其實不存在。
+    if (!data?.length) { toast.error("儲存失敗：沒有權限編輯這場會議的紀錄，內容未寫入"); return; }
+    toast.success("會議紀錄已儲存"); onSaved();
   };
 
   return (

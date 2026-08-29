@@ -1109,9 +1109,13 @@ function DetailDialog({
 
   const patch = async (payload: Record<string, unknown>, okMsg: string) => {
     setBusy(true);
-    const { error } = await supabase.from("eip_anomaly").update(payload).eq("id", row.id);
+    const { data, error } = await supabase
+      .from("eip_anomaly").update(payload).eq("id", row.id).select("id");
     setBusy(false);
     if (error) return toast.error(humanizeError(error, "更新"));
+    // 被 RLS 擋掉時回 0 列而 error 是 null。這支同時負責填報、確認、結案、作廢，
+    // 沒有這道檢查就會把「沒寫進去」報成成功。
+    if (!data?.length) { onChanged(); return toast.error("更新失敗：沒有權限執行這個動作，或缺失狀態已經被別人變更"); }
     toast.success(okMsg);
     onChanged();
   };
