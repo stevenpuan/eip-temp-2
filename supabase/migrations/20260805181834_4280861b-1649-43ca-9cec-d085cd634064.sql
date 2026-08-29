@@ -20,3 +20,4 @@ end $$;
 revoke all on table public.line_pending_task from anon, authenticated;
 grant all on table public.line_pending_task to service_role;
 comment on table public.line_pending_task is '內部 LINE 推播佇列：僅由 SECURITY DEFINER 函式與 service_role 存取；RLS 無政策＝拒絕所有一般使用者存取（刻意設計）。';
+;

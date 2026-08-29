@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS app_user_self_insert ON public.app_user;;

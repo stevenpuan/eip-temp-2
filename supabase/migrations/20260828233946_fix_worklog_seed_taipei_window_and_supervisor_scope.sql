@@ -1,0 +1,106 @@
+-- 修正兩件事：
+-- (1) 時區：p_date::timestamptz at time zone 'Asia/Taipei' 等於把時區加了兩次
+--     （伺服器 TZ=UTC，date 先變 00:00+00 再位移 8 小時），造成「當日完成」的視窗
+--     變成台北 16:00 ~ 隔日 16:00。正確寫法是先 ::timestamp 再 at time zone。
+-- (2) 範圍：原本只看角色（company_admin / dept_manager），沒看實際督導關係，
+--     任何部門主管都能帶出非管轄部門同仁的日誌清單。改用 eip_is_dept_supervisor，
+--     與部門日誌頁 / 催填 / 績效同一把尺（company_admin 已含在該函式內）。
+create or replace function public.eip_worklog_seed(p_user_id uuid, p_date date default current_date)
+ returns jsonb
+ language plpgsql
+ stable security definer
+ set search_path to 'public'
+as $function$
+declare
+  v_morning jsonb := '[]'::jsonb;
+  v_afternoon jsonb := '[]'::jsonb;
+  v_special jsonb := '[]'::jsonb;
+  v_status text;
+begin
+  if p_user_id is null then p_user_id := auth.uid(); end if;
+  if auth.uid() is not null and p_user_id <> auth.uid()
+     and not public.eip_is_dept_supervisor(
+           (select a.department_id from public.app_user a where a.id = p_user_id)) then
+    raise exception '權限不足：只能帶入自己或所督導部門成員的工作日誌';
+  end if;
+
+  select status into v_status from public.app_user where id = p_user_id;
+  if v_status is distinct from 'active' then
+    return jsonb_build_object('morning','[]'::jsonb,'afternoon','[]'::jsonb,'special','[]'::jsonb);
+  end if;
+
+  -- ① 個人例行範本（上午 / 全天 → 上午區；下午 → 下午區）
+  select coalesce(jsonb_agg(x order by x->>'ord'), '[]'::jsonb) into v_morning
+  from (
+    select jsonb_build_object(
+             'text', pr.title, 'done', false, 'note', '',
+             'source','personal_routine', 'ref_id', pr.id::text, 'link','',
+             'req', pr.require_content, 'ord', lpad(pr.sort_order::text, 6, '0')) as x
+    from public.personal_routine pr
+    where pr.user_id = p_user_id and pr.is_active and pr.deleted_at is null
+      and pr.time_slot in ('morning','allday')
+      and public.eip_personal_routine_due_on(pr, p_date)
+  ) s;
+
+  select coalesce(jsonb_agg(x order by x->>'ord'), '[]'::jsonb) into v_afternoon
+  from (
+    select jsonb_build_object(
+             'text', pr.title, 'done', false, 'note', '',
+             'source','personal_routine', 'ref_id', pr.id::text, 'link','',
+             'req', pr.require_content, 'ord', lpad(pr.sort_order::text, 6, '0')) as x
+    from public.personal_routine pr
+    where pr.user_id = p_user_id and pr.is_active and pr.deleted_at is null
+      and pr.time_slot = 'afternoon'
+      and public.eip_personal_routine_due_on(pr, p_date)
+  ) s;
+
+  -- ② 常態工作當日產生的任務 → 併入上午例行區（負責人「或」協作者都帶入）
+  v_morning := v_morning || (
+    select coalesce(jsonb_agg(jsonb_build_object(
+             'text', t.title, 'done', coalesce(t.progress,0) >= 100,
+             'note', coalesce(t.description,''),
+             'source','recurring', 'ref_id', t.id::text, 'link','', 'req', false)), '[]'::jsonb)
+    from public.task t
+    where t.recurring_rule_id is not null
+      and t.occurrence_date = p_date and t.deleted_at is null
+      and ( t.owner_id = p_user_id
+            or exists (select 1 from public.task_collaborator tc
+                        where tc.task_id = t.id and tc.user_id = p_user_id) ));
+
+  -- ③ 特殊工作：未完成（負責或協作）＋ 當日完成
+  v_special := (
+    select coalesce(jsonb_agg(jsonb_build_object(
+             'text', d.title, 'done', d.is_done, 'note','',
+             'source', d.src, 'ref_id', d.id::text, 'link','', 'req', false)
+           order by d.is_done, d.due_date nulls last), '[]'::jsonb)
+    from (
+      select t.id, t.title, false as is_done, t.due_date, 'task'::text as src
+        from public.task t join public.task_status s on s.id = t.status_id
+       where t.owner_id = p_user_id and t.recurring_rule_id is null
+         and not s.is_done_state and t.deleted_at is null
+      union
+      select t.id, t.title, false, t.due_date, 'task'
+        from public.task_collaborator tc
+        join public.task t on t.id = tc.task_id
+        join public.task_status s on s.id = t.status_id
+       where tc.user_id = p_user_id and t.recurring_rule_id is null
+         and not s.is_done_state and t.owner_id <> p_user_id and t.deleted_at is null
+      union
+      select t.id, t.title, true, t.due_date, 'task'
+        from public.task t
+       where t.owner_id = p_user_id and t.recurring_rule_id is null
+         and t.deleted_at is null
+         and t.completed_at >= (p_date::timestamp at time zone 'Asia/Taipei')
+         and t.completed_at <  ((p_date + 1)::timestamp at time zone 'Asia/Taipei')
+      union
+      select a.id, a.content, false, a.due_date, 'meeting_action'
+        from public.meeting_action_item a
+       where a.owner_id = p_user_id and a.status <> 'done' and a.linked_task_id is null
+    ) d);
+
+  return jsonb_build_object('morning', v_morning, 'afternoon', v_afternoon, 'special', v_special);
+end;
+$function$;
+
+revoke all on function public.eip_worklog_seed(uuid, date) from public, anon;
+grant execute on function public.eip_worklog_seed(uuid, date) to authenticated;;

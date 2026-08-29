@@ -35,3 +35,6 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# Supabase CLI 的本機狀態（連結資訊、各元件版本），不該進版控
+supabase/.temp/

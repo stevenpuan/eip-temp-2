@@ -1,4 +1,20 @@
 project_id = "iegkmncnvmmzllqkijxm"
 
+# ⚠️ verify_jwt 要跟雲端一致，否則 deploy 會把線上的設定改掉。
+# 查詢方式：Supabase Dashboard → Edge Functions，或 MCP list_edge_functions。
+# 2026-08-29 實查結果如下。
+
 [functions.analyze-feature-request]
 verify_jwt = true
+
+[functions.eip-assistant]
+verify_jwt = true
+
+# LINE 的兩支是給外部/內部機器呼叫的，不帶使用者 JWT：
+# line-webhook 由 LINE 平台呼叫（自己驗 X-Line-Signature）
+# line-push   由 notification 觸發器透過 pg_net 呼叫（自己驗 x-push-key）
+[functions.line-push]
+verify_jwt = false
+
+[functions.line-webhook]
+verify_jwt = false

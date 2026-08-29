@@ -1,0 +1,33 @@
+create type announcement_audience as enum ('all', 'department', 'users');
+
+create table announcement (
+  id            uuid primary key default gen_random_uuid(),
+  tenant_id     uuid not null references tenant(id) on delete cascade,
+  title         text not null,
+  body          text not null,
+  audience_type announcement_audience not null default 'all',
+  is_pinned     boolean not null default false,
+  published_at  timestamptz,
+  created_by    uuid not null references app_user(id),
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+create index idx_announcement_tenant on announcement(tenant_id);
+create trigger trg_announcement_updated before update on announcement
+  for each row execute function set_updated_at();
+
+create table announcement_target (
+  id              uuid primary key default gen_random_uuid(),
+  announcement_id uuid not null references announcement(id) on delete cascade,
+  department_id   uuid references department(id) on delete cascade,
+  user_id         uuid references app_user(id) on delete cascade,
+  check (department_id is not null or user_id is not null)
+);
+create index idx_ann_target_ann on announcement_target(announcement_id);
+
+create table announcement_read (
+  announcement_id uuid not null references announcement(id) on delete cascade,
+  user_id         uuid not null references app_user(id) on delete cascade,
+  read_at         timestamptz not null default now(),
+  primary key (announcement_id, user_id)
+);;
