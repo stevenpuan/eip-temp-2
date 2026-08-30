@@ -14,6 +14,15 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { humanizeError } from "@/lib/eip-error";
 
+// 「子頁面權限」分頁先關掉。
+// 這一層在後端**完全沒有消費者**：所有 RLS 政策與 eip_has_perm() 只讀
+// role_module_permissions，沒有任何一處讀 role_page_permissions（該表至今 0 列）。
+// 也就是說使用者在那個分頁勾了什麼、按了儲存、看到「已儲存」，實際上一點作用都沒有 ——
+// 而且因為畫面說得像真的，反而會讓人以為某個頁面已經鎖起來了。
+// 這比功能缺一塊更危險，所以先把入口收掉，程式碼保留（savePage 等一併留著），
+// 等哪天後端真的實作了兩層權限再打開這個旗標。查證日 2026-08-30。
+const SHOW_PAGE_PERMISSIONS: boolean = false;
+
 export const Route = createFileRoute("/dashboard/role-permissions")({ component: () => (
     <RequirePerm module="role_permissions">
       <RolePermPage />
@@ -126,7 +135,12 @@ function RolePermPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="角色權限" description="兩層權限：模組層為基礎，子頁面層細部覆寫（未設定則繼承）" />
+      <PageHeader
+        title="角色權限"
+        description={SHOW_PAGE_PERMISSIONS
+          ? "兩層權限：模組層為基礎，子頁面層細部覆寫（未設定則繼承）"
+          : "以模組為單位設定各角色的檢視／新增／編輯／刪除／匯出權限"}
+      />
       <div className="flex flex-wrap gap-2">
         {roles.map((r) => (
           <button key={r.id} onClick={() => setRoleId(r.id)}
@@ -138,10 +152,12 @@ function RolePermPage() {
       {isAdminRole && <p className="text-sm text-muted-foreground">管理員擁有全部權限，無法調整。</p>}
 
       <Tabs defaultValue="module">
-        <TabsList>
-          <TabsTrigger value="module">模組權限</TabsTrigger>
-          <TabsTrigger value="page">子頁面權限</TabsTrigger>
-        </TabsList>
+        {SHOW_PAGE_PERMISSIONS && (
+          <TabsList>
+            <TabsTrigger value="module">模組權限</TabsTrigger>
+            <TabsTrigger value="page">子頁面權限</TabsTrigger>
+          </TabsList>
+        )}
 
         <TabsContent value="module" className="mt-4 space-y-3">
           {editable && !isAdminRole && <div className="flex justify-end"><Button onClick={saveModule}>儲存模組權限</Button></div>}
@@ -164,6 +180,7 @@ function RolePermPage() {
           </CardContent></Card>
         </TabsContent>
 
+        {SHOW_PAGE_PERMISSIONS && (
         <TabsContent value="page" className="mt-4 space-y-3">
           <p className="text-xs text-muted-foreground">點格子切換：繼承 → 開 → 關。「繼承」表示沿用模組層設定。</p>
           {editable && !isAdminRole && <div className="flex justify-end"><Button onClick={savePage}>儲存子頁面權限</Button></div>}
@@ -195,6 +212,7 @@ function RolePermPage() {
             </Table>
           </CardContent></Card>
         </TabsContent>
+        )}
       </Tabs>
     </div>
   );

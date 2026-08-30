@@ -24,6 +24,15 @@ export const Route = createFileRoute("/dashboard/lookups")({ component: () => (
 
 interface Lookup { id: string; category: string; code: string; label: string; sort_order: number; is_active: boolean; }
 
+// 這張表只是「集中維護下拉選項」，但實際上只有一個類別真的被程式讀取。
+// 另外兩個類別的選項是寫死在畫面程式裡的，在這裡改不會有任何效果 ——
+// 不標出來的話，改了以為生效才是最麻煩的。查證日 2026-08-30。
+const CATEGORY_NOTE: Record<string, { used: boolean; note: string }> = {
+  changelog_type: { used: true, note: "開發歷程頁的「類型」下拉選單讀這裡（停用的不會出現）" },
+  issue_severity: { used: false, note: "問題反饋頁的嚴重度是寫死在程式裡的，改這裡不會生效" },
+  feature_request_status: { used: false, note: "許願池狀態是寫死在程式裡的，改這裡不會生效" },
+};
+
 function Page() {
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -47,22 +56,27 @@ function Page() {
   const [label, setLabel] = useState("");
   const create = async () => {
     if (!category || !code || !label) { toast.error("請填寫類別、代碼、標籤"); return; }
-    const { error } = await supabase.from("lookups").insert({ category, code, label });
+    const { data, error } = await supabase.from("lookups").insert({ category, code, label }).select("id");
     if (error) { toast.error(humanizeError(error, "新增")); return; }
+    if (!data?.length) { toast.error("新增失敗：沒有權限寫入，請重新整理後再試"); return; }
     toast.success("已新增"); setAddOpen(false); setCode(""); setLabel(""); reload();
   };
 
   const [edit, setEdit] = useState<Lookup | null>(null);
   const saveEdit = async () => {
     if (!edit) return;
-    const { error } = await supabase.from("lookups").update({ label: edit.label, sort_order: edit.sort_order, is_active: edit.is_active }).eq("id", edit.id);
+    const { data, error } = await supabase.from("lookups")
+      .update({ label: edit.label, sort_order: edit.sort_order, is_active: edit.is_active })
+      .eq("id", edit.id).select("id");
     if (error) { toast.error(humanizeError(error, "更新")); return; }
+    if (!data?.length) { toast.error("更新失敗：沒有寫入任何資料，請重新整理後再試"); return; }
     toast.success("已更新"); setEdit(null); reload();
   };
   const del = async (r: Lookup) => {
     if (!confirm(`確定刪除「${r.label}」？`)) return;
-    const { error } = await supabase.from("lookups").delete().eq("id", r.id);
+    const { data, error } = await supabase.from("lookups").delete().eq("id", r.id).select("id");
     if (error) { toast.error(humanizeError(error, "刪除")); return; }
+    if (!data?.length) { toast.error("刪除失敗：沒有權限刪除這筆，請重新整理後確認"); return; }
     toast.success("已刪除"); reload();
   };
 
@@ -87,7 +101,14 @@ function Page() {
 
       {categories.map((cat) => (
         <Card key={cat}>
-          <CardHeader><CardTitle className="text-base font-mono">{cat}</CardTitle></CardHeader>
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-base font-mono">{cat}</CardTitle>
+            {CATEGORY_NOTE[cat] && (
+              <p className={CATEGORY_NOTE[cat].used ? "text-xs text-muted-foreground" : "text-xs text-destructive"}>
+                {CATEGORY_NOTE[cat].used ? "" : "⚠ "}{CATEGORY_NOTE[cat].note}
+              </p>
+            )}
+          </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader><TableRow><TableHead>代碼</TableHead><TableHead>標籤</TableHead><TableHead>排序</TableHead><TableHead>狀態</TableHead><TableHead className="text-right">操作</TableHead></TableRow></TableHeader>

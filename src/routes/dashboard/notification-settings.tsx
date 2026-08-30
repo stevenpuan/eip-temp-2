@@ -60,6 +60,11 @@ const SCOPES: { key: string; label: string }[] = [
   { key: "all_company", label: "全公司" },
 ];
 
+// 這三個事件的收件人是由呼叫端當場指定（eip_notification_recipients 的 p_extra_user_ids）：
+// 公告＝發布對象、系統直接通知＝程式指定、會議邀請＝與會者。
+// 它們的 recipient_scopes 本來就是空的，是正常設計，不可以被下面的檢查擋下來。
+const SCOPELESS_BY_DESIGN = new Set(["announcement_published", "direct_notify", "meeting_invited"]);
+
 const EMPTY_SETTINGS: Setting[] = [];
 
 function Page() {
@@ -130,15 +135,39 @@ function Page() {
   const save = async () => {
     const changed = rows.filter((r) => JSON.stringify(draft[r.id]) !== JSON.stringify({ ...r, recipient_scopes: [...(r.recipient_scopes ?? [])] }));
     if (changed.length === 0) { toast.info("沒有變更"); return; }
+
+    // 收件範圍清空又還開著通知＝這個事件從此不會通知任何人，而且畫面上看不出來。
+    // 三個「收件人由呼叫端指定」的事件除外（見 SCOPELESS_BY_DESIGN）。
+    const emptied = changed.filter((r) => {
+      const d = draft[r.id];
+      return d.is_active && (d.in_app_enabled || d.line_enabled)
+        && (d.recipient_scopes?.length ?? 0) === 0
+        && !SCOPELESS_BY_DESIGN.has(r.event_code);
+    });
+    if (emptied.length > 0) {
+      toast.error(
+        `「${emptied.map((r) => EVENT_LABEL[r.event_code] ?? r.event_code).join("、")}」`
+        + "沒有選任何收件範圍，這樣就不會通知到任何人。請至少選一個，或把該事件關掉。",
+      );
+      return;
+    }
+
     const results = await Promise.all(changed.map((r) => {
       const d = draft[r.id];
       return supabase.from("notification_setting").update({
         recipient_scopes: d.recipient_scopes, in_app_enabled: d.in_app_enabled,
         line_enabled: d.line_enabled, is_active: d.is_active, updated_at: new Date().toISOString(),
-      }).eq("id", r.id);
+      }).eq("id", r.id).select("id");
     }));
     const err = results.find((x) => x.error);
     if (err?.error) { toast.error(humanizeError(err.error, "儲存通知設定")); return; }
+    // RLS 擋下時 PostgREST 回 0 列而不是錯誤，不驗筆數會把失敗說成成功
+    const blocked = results.filter((x) => !x.data?.length).length;
+    if (blocked > 0) {
+      toast.error(`有 ${blocked} 筆沒有寫入（可能是權限不足），請重新整理後確認`);
+      qc.invalidateQueries({ queryKey: ["notification_setting_all"] });
+      return;
+    }
     toast.success("已儲存"); qc.invalidateQueries({ queryKey: ["notification_setting_all"] });
   };
 

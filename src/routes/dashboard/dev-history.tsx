@@ -36,7 +36,9 @@ function Page() {
   const { data: types = [] } = useQuery({
     queryKey: ["lk", "changelog_type"],
     queryFn: async () => {
-      const { data } = await supabase.from("lookups").select("code,label").eq("category", "changelog_type").order("sort_order");
+      // 代碼字典有「停用」開關，這裡原本沒過濾，停用了照樣出現在下拉選單裡（設了等於沒設）
+      const { data } = await supabase.from("lookups").select("code,label")
+        .eq("category", "changelog_type").eq("is_active", true).order("sort_order");
       return (data ?? []) as { code: string; label: string }[];
     },
   });
