@@ -1,0 +1,13 @@
+-- 2026-08-29 advisor 追查發現：is_admin(uuid) 開放給 anon 執行。
+--
+-- 其他 20 支開給 anon 的 SECURITY DEFINER 函式都是靠 auth.uid() 判斷，anon 呼叫一律回
+-- false/null，不會外洩東西。但 is_admin 是唯一「吃外部傳入的 uuid」的那支 ——
+-- 實測用公開的 anon key 呼叫 is_admin('<steven 的 uuid>') 會誠實回 true，
+-- 等於任何人都能拿 uuid 去問「這個人是不是系統管理者」。
+--
+-- 安全性確認（重要，2026-08-07 曾因為亂收 anon EXECUTE 造成政策退化）：
+--   全庫引用 is_admin 的 7 條 RLS 政策（doc_pages / eip_dept_view_grant /
+--   role_module_permissions / role_page_permissions / roles / user_roles）
+--   全部都是 `to authenticated`，anon 根本不會走到，收掉不會讓政策評估失敗。
+--   前端與 edge function 也沒有任何一處直接呼叫 is_admin。
+revoke execute on function public.is_admin(uuid) from anon;;
