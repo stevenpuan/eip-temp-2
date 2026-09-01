@@ -1,0 +1,1 @@
+select cron.schedule('eip-log-purge-daily', '0 22 * * *', $$select public.eip_cron_guarded('eip_purge_maintenance')$$);
