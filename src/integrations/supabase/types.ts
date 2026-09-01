@@ -252,6 +252,7 @@ export type Database = {
           id: string
           job_title: string | null
           line_user_id: string | null
+          must_change_password: boolean
           name: string
           role: Database["public"]["Enums"]["user_role"]
           status: Database["public"]["Enums"]["user_status"]
@@ -269,6 +270,7 @@ export type Database = {
           id: string
           job_title?: string | null
           line_user_id?: string | null
+          must_change_password?: boolean
           name: string
           role?: Database["public"]["Enums"]["user_role"]
           status?: Database["public"]["Enums"]["user_status"]
@@ -286,6 +288,7 @@ export type Database = {
           id?: string
           job_title?: string | null
           line_user_id?: string | null
+          must_change_password?: boolean
           name?: string
           role?: Database["public"]["Enums"]["user_role"]
           status?: Database["public"]["Enums"]["user_status"]
@@ -1947,6 +1950,66 @@ export type Database = {
         }
         Relationships: []
       }
+      eip_purge_policy: {
+        Row: {
+          days: number
+          is_active: boolean
+          key: string
+          label: string
+          note: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          days: number
+          is_active?: boolean
+          key: string
+          label: string
+          note?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          days?: number
+          is_active?: boolean
+          key?: string
+          label?: string
+          note?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      eip_purge_run_log: {
+        Row: {
+          detail: Json | null
+          dry_run: boolean
+          duration_ms: number | null
+          error: string | null
+          id: number
+          ok: boolean
+          ran_at: string
+        }
+        Insert: {
+          detail?: Json | null
+          dry_run?: boolean
+          duration_ms?: number | null
+          error?: string | null
+          id?: number
+          ok: boolean
+          ran_at?: string
+        }
+        Update: {
+          detail?: Json | null
+          dry_run?: boolean
+          duration_ms?: number | null
+          error?: string | null
+          id?: number
+          ok?: boolean
+          ran_at?: string
+        }
+        Relationships: []
+      }
       eip_quick_report: {
         Row: {
           created_at: string
@@ -3145,6 +3208,138 @@ export type Database = {
           },
         ]
       }
+      phone_order_daily: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          error_count: number
+          error_reason: string | null
+          id: string
+          log_date: string
+          order_count: number
+          remark: string | null
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          error_count?: number
+          error_reason?: string | null
+          id?: string
+          log_date: string
+          order_count?: number
+          remark?: string | null
+          tenant_id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          error_count?: number
+          error_reason?: string | null
+          id?: string
+          log_date?: string
+          order_count?: number
+          remark?: string | null
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_order_daily_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "phone_order_daily_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      phone_order_lock: {
+        Row: {
+          id: string
+          locked: boolean
+          locked_at: string
+          locked_by: string | null
+          tenant_id: string
+          ym: string
+        }
+        Insert: {
+          id?: string
+          locked?: boolean
+          locked_at?: string
+          locked_by?: string | null
+          tenant_id?: string
+          ym: string
+        }
+        Update: {
+          id?: string
+          locked?: boolean
+          locked_at?: string
+          locked_by?: string | null
+          tenant_id?: string
+          ym?: string
+        }
+        Relationships: []
+      }
+      phone_order_month: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          tenant_id: string
+          updated_at: string
+          user_id: string
+          work_days: number | null
+          ym: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id: string
+          work_days?: number | null
+          ym: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+          work_days?: number | null
+          ym?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_order_month_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "phone_order_month_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -3401,6 +3596,7 @@ export type Database = {
           advance_days: number[]
           counterpart: string | null
           counterpart_user_id: string | null
+          counterpart_user_ids: string[]
           created_at: string
           created_by: string | null
           days_of_month: number[] | null
@@ -3426,6 +3622,7 @@ export type Database = {
           advance_days?: number[]
           counterpart?: string | null
           counterpart_user_id?: string | null
+          counterpart_user_ids?: string[]
           created_at?: string
           created_by?: string | null
           days_of_month?: number[] | null
@@ -3451,6 +3648,7 @@ export type Database = {
           advance_days?: number[]
           counterpart?: string | null
           counterpart_user_id?: string | null
+          counterpart_user_ids?: string[]
           created_at?: string
           created_by?: string | null
           days_of_month?: number[] | null
@@ -4886,6 +5084,7 @@ export type Database = {
         Returns: Database["public"]["Enums"]["user_role"]
       }
       current_tenant_id: { Args: never; Returns: string }
+      daily_maintenance: { Args: never; Returns: Json }
       eip_admin_create_user: {
         Args: {
           p_department_id?: string
@@ -4896,6 +5095,7 @@ export type Database = {
         Returns: Json
       }
       eip_admin_delete_user: { Args: { p_user_id: string }; Returns: Json }
+      eip_admin_reset_password: { Args: { p_user_id: string }; Returns: Json }
       eip_announcement_targeted: {
         Args: { p_announcement_id: string }
         Returns: boolean
@@ -4935,6 +5135,7 @@ export type Database = {
       eip_can_view_dept_record: { Args: { p_dept: string }; Returns: boolean }
       eip_can_view_dept_shared: { Args: { p_dept: string }; Returns: boolean }
       eip_close_leave_handover: { Args: { p_report_id: string }; Returns: Json }
+      eip_complete_password_change: { Args: never; Returns: undefined }
       eip_confirm_line_delivery: { Args: never; Returns: number }
       eip_create_department: {
         Args: {
@@ -5043,6 +5244,7 @@ export type Database = {
       }
       eip_is_any_dept_supervisor: { Args: never; Returns: boolean }
       eip_is_dept_supervisor: { Args: { p_dept: string }; Returns: boolean }
+      eip_is_phone_order_hr: { Args: never; Returns: boolean }
       eip_is_task_collaborator: {
         Args: { p_task_id: string }
         Returns: boolean
@@ -5076,6 +5278,7 @@ export type Database = {
         Args: { p_log_id: string }
         Returns: number
       }
+      eip_must_change_password: { Args: never; Returns: boolean }
       eip_my_routine_today: {
         Args: { p_date?: string }
         Returns: {
@@ -5203,10 +5406,45 @@ export type Database = {
         }
         Returns: boolean
       }
+      eip_phone_order_error_detail: {
+        Args: { p_department_id?: string; p_month: number; p_year: number }
+        Returns: {
+          department_name: string
+          error_count: number
+          error_reason: string
+          log_date: string
+          remark: string
+          user_id: string
+          user_name: string
+        }[]
+      }
+      eip_phone_order_month_locked: {
+        Args: { p_day: string }
+        Returns: boolean
+      }
+      eip_phone_order_summary: {
+        Args: { p_department_id?: string; p_month: number; p_year: number }
+        Returns: {
+          avg_score: number
+          days_recorded: number
+          department_id: string
+          department_name: string
+          locked: boolean
+          total_errors: number
+          total_orders: number
+          user_id: string
+          user_name: string
+          work_days: number
+        }[]
+      }
       eip_priority_label: { Args: { p: string }; Returns: string }
       eip_purge_deleted: {
         Args: { p_id: string; p_module: string }
         Returns: undefined
+      }
+      eip_purge_maintenance: {
+        Args: { p_dry_run?: boolean; p_max_per_table?: number }
+        Returns: Json
       }
       eip_purge_old_logs: { Args: { p_days?: number }; Returns: string }
       eip_remove_routine_item: {
@@ -5218,6 +5456,10 @@ export type Database = {
           p_text?: string
         }
         Returns: Json
+      }
+      eip_reorder_leave_handover_items: {
+        Args: { p_ids: string[] }
+        Returns: number
       }
       eip_reorder_task_checklist: {
         Args: { p_ids: string[]; p_task_id: string }
@@ -5294,6 +5536,15 @@ export type Database = {
       eip_worklog_seed: {
         Args: { p_date?: string; p_user_id: string }
         Returns: Json
+      }
+      eip_worklog_supervised_members: {
+        Args: never
+        Returns: {
+          department_id: string
+          department_name: string
+          name: string
+          user_id: string
+        }[]
       }
       is_admin: { Args: { _uid: string }; Returns: boolean }
       redeem_invitation: { Args: { p_code: string }; Returns: string }
