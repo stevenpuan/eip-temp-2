@@ -1,0 +1,1 @@
+select public.eip_cron_guarded('eip_purge_maintenance');
