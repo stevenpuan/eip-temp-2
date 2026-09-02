@@ -5,6 +5,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus, Play, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+// eip_can_run_recurring 還沒進 types.ts，走 untyped re-export
+import { supabase as supabaseAny } from "@/lib/supabase";
 import { useEipUser } from "@/lib/eip-user";
 import { useAuth } from "@/lib/auth";
 import { DEFAULT_TENANT_ID, PRIORITY_LABEL } from "@/lib/eip-constants";
@@ -147,11 +149,15 @@ function DetailField({ label, value }: { label: string; value: string }) {
 function RecurringPage() {
   const qc = useQueryClient();
   const { appUser } = useEipUser();
-  const { can, permsLoaded } = useAuth();
+  const { can, permsLoaded, roles } = useAuth();
   // 權限一律讀「角色權限設定」（常態工作模組），不寫死角色
   const allowed = can("eip_recurring", "view");
   const canCreate = can("eip_recurring", "create");
   const canManage = can("eip_recurring", "edit");
+  /* 後端「跑全公司」的條件是 current_role_name()='company_admin'，
+   * 而 eip_derive_app_role 會把 roles 的 admin 與 manager 都映射成 company_admin，
+   * 所以這裡不能只看 isAdmin（那只認 admin）。 */
+  const runsAllDepartments = roles.includes("admin") || roles.includes("manager");
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Rule | null>(null);
@@ -264,13 +270,37 @@ function RecurringPage() {
     if (!data?.length) { toast.error("刪除失敗：沒有權限修改這條規則（僅規則負責人 / 該部門主管 / 管理者）"); return; }
     toast.success("已刪除"); refresh();
   };
+  /* 「立即產生/檢查」的顯示判準。
+   * 這顆按鈕原本沒有任何權限判斷：一般成員看得到但按下去只會拿到「權限不足」，
+   * 而部門主管其實按得動。不能改用 can("eip_recurring","create") 當閘門 ——
+   * role_module_permissions 裡 dept_manager 的 create/edit 是 false、member 反而是 true，
+   * 用它會把部門主管現有的能力縮掉，又留著給成員的假按鈕。
+   * 所以問後端同一支判準（管理者 ∪ 有管轄範圍/自己負責的規則），前後端不會再各說一套。
+   */
+  const canRunQ = useQuery({
+    queryKey: ["eip", "can-run-recurring"],
+    queryFn: async () => {
+      const { data, error } = await supabaseAny.rpc("eip_can_run_recurring");
+      if (error) throw error;
+      return !!data;
+    },
+  });
+
   const runNow = async () => {
     if (running) return;
     setRunning(true);
     const { error } = await supabase.rpc("eip_run_recurring", {});
     setRunning(false);
     if (error) toast.error(humanizeError(error, "立即執行"));
-    else { toast.success("已執行：產生到期任務與提醒"); refresh(); }
+    else {
+      // 後端對非管理者只跑「管轄部門 ∪ 自己負責」的規則，訊息不要讓人誤以為全公司都跑過了
+      toast.success(
+        runsAllDepartments
+          ? "已執行：產生全公司到期任務與提醒"
+          : "已執行：產生你管轄範圍內的到期任務與提醒",
+      );
+      refresh();
+    }
   };
 
   if (!appUser) return <EipUserPending />;
@@ -285,7 +315,12 @@ function RecurringPage() {
         description="集中管理週期性任務（每日 / 每週 / 每月 / 每年），由系統自動依排程生成任務與提醒。"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={runNow} disabled={running}><Play className="w-4 h-4 mr-1" />{running ? "產生中…" : "立即產生/檢查"}</Button>
+            {canRunQ.data && (
+              <Button variant="outline" onClick={runNow} disabled={running}>
+                <Play className="w-4 h-4 mr-1" />
+                {running ? "產生中…" : "立即產生/檢查"}
+              </Button>
+            )}
             {canCreate && (
               <Button onClick={() => { setEditing(null); setOpen(true); }}>
                 <Plus className="w-4 h-4 mr-1" />新增規則
