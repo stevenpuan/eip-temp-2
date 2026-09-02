@@ -53,10 +53,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { Database } from "@/integrations/supabase/types";
+import { RecurringReportDialog, ReportFieldsForm } from "@/components/eip/RecurringReportDialog";
 import {
-  RecurringReportDialog, ReportFieldsForm, orphanReportEntries, formatReportValue, useReportFields,
+  formatReportValue,
+  orphanReportEntries,
+  useReportFields,
   type ReportValues,
-} from "@/components/eip/RecurringReportDialog";
+} from "@/lib/eip-recurring-report";
 import { TaskChecklist } from "@/components/eip/TaskChecklist";
 import { EntityLinks } from "@/components/eip/EntityLinks";
 import { UrlLinks } from "@/components/eip/UrlLinks";
@@ -1142,8 +1145,15 @@ function TaskCard({ task, owner, creator, subtask, source, deptMap, statuses, ca
         {/* 原本進度到 100% 這顆按鈕就消失，導致「填過的回報內容看不到、也不能更正」。
             改成一直提供入口，已完成時換成檢視／修正的字樣。 */}
         {task.recurring_rule_id && (
-          <Button size="sm" variant="outline" className="w-full h-8 text-xs rounded-md"
-            onClick={(e) => { e.stopPropagation(); setReportOpen(true); }}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full h-8 text-xs rounded-md"
+            onClick={(e) => {
+              e.stopPropagation();
+              setReportOpen(true);
+            }}
+          >
             {task.progress >= 100 ? "檢視／修正回報" : "週期回報"}
           </Button>
         )}
@@ -2123,8 +2133,11 @@ export function EditTaskDialog({
    * report_data 由這裡自己補讀，不依賴呼叫端 select 了哪些欄位（三個呼叫端各撈各的）。
    */
   const isRecurring = !!task.recurring_rule_id;
-  const { fields: reportFields, loading: reportFieldsLoading, error: reportFieldsErr } =
-    useReportFields(task.recurring_rule_id, isRecurring);
+  const {
+    fields: reportFields,
+    loading: reportFieldsLoading,
+    error: reportFieldsErr,
+  } = useReportFields(task.recurring_rule_id, isRecurring);
   const [reportValues, setReportValues] = useState<ReportValues>({});
   const [reportLoaded, setReportLoaded] = useState(false);
   const [reportErr, setReportErr] = useState<string | null>(null);
@@ -2134,16 +2147,26 @@ export function EditTaskDialog({
   useEffect(() => {
     if (!isRecurring) return;
     let alive = true;
-    setReportLoaded(false); setReportErr(null); setReportDirty(false);
+    setReportLoaded(false);
+    setReportErr(null);
+    setReportDirty(false);
     void (async () => {
       const { data, error } = await supabase
-        .from("task").select("report_data").eq("id", task.id).maybeSingle();
+        .from("task")
+        .select("report_data")
+        .eq("id", task.id)
+        .maybeSingle();
       if (!alive) return;
-      if (error) { setReportErr(formatErr(error)); return; }
+      if (error) {
+        setReportErr(formatErr(error));
+        return;
+      }
       setReportValues((data?.report_data as ReportValues) ?? {});
       setReportLoaded(true);
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [task.id, isRecurring]);
   // 規則後來把欄位刪掉、但任務上還留著值的，另外列出來只給檢視，不讓歷史回報從畫面消失
   const reportOrphans = useMemo(
@@ -2329,10 +2352,13 @@ export function EditTaskDialog({
                   />
                   {reportOrphans.length > 0 && (
                     <div className="rounded-md border bg-background px-2.5 py-1.5 space-y-1">
-                      <div className="text-[11px] text-muted-foreground">規則已移除的欄位（僅供檢視）</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        規則已移除的欄位（僅供檢視）
+                      </div>
                       {reportOrphans.map(([k, v]) => (
                         <div key={k} className="text-xs">
-                          <span className="text-muted-foreground">{k}：</span>{formatReportValue(v)}
+                          <span className="text-muted-foreground">{k}：</span>
+                          {formatReportValue(v)}
                         </div>
                       ))}
                     </div>
