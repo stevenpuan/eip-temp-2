@@ -53,7 +53,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { Database } from "@/integrations/supabase/types";
-import { RecurringReportDialog } from "@/components/eip/RecurringReportDialog";
+import {
+  RecurringReportDialog, ReportFieldsForm, orphanReportEntries, formatReportValue, useReportFields,
+  type ReportValues,
+} from "@/components/eip/RecurringReportDialog";
 import { TaskChecklist } from "@/components/eip/TaskChecklist";
 import { EntityLinks } from "@/components/eip/EntityLinks";
 import { UrlLinks } from "@/components/eip/UrlLinks";
@@ -216,7 +219,7 @@ function TasksPage() {
     queryKey: ["eip", "tasks-full", doneWindowDays],
     queryFn: async () => {
       const cols =
-        "id,tenant_id,title,description,type_id,project_id,parent_task_id,department_id,owner_id,priority,status_id,progress,due_date,created_by,completed_at,created_at,updated_at,board_position,start_date,recurring_rule_id,occurrence_date,visibility_scope";
+        "id,tenant_id,title,description,type_id,project_id,parent_task_id,department_id,owner_id,priority,status_id,progress,due_date,created_by,completed_at,created_at,updated_at,board_position,start_date,recurring_rule_id,occurrence_date,report_data,visibility_scope";
       if (doneWindowDays === null) {
         const { data, error } = await supabase
           .from("task").select(cols)
@@ -1136,10 +1139,12 @@ function TaskCard({ task, owner, creator, subtask, source, deptMap, statuses, ca
             <div className="h-full bg-accent transition-all" style={{ width: `${task.progress}%` }} />
           </div>
         )}
-        {task.recurring_rule_id && task.progress < 100 && (
+        {/* 原本進度到 100% 這顆按鈕就消失，導致「填過的回報內容看不到、也不能更正」。
+            改成一直提供入口，已完成時換成檢視／修正的字樣。 */}
+        {task.recurring_rule_id && (
           <Button size="sm" variant="outline" className="w-full h-8 text-xs rounded-md"
             onClick={(e) => { e.stopPropagation(); setReportOpen(true); }}>
-            週期回報
+            {task.progress >= 100 ? "檢視／修正回報" : "週期回報"}
           </Button>
         )}
       </CardContent>
@@ -1150,6 +1155,7 @@ function TaskCard({ task, owner, creator, subtask, source, deptMap, statuses, ca
           taskId={task.id}
           recurringRuleId={task.recurring_rule_id}
           initialData={task.report_data as Record<string, unknown> | null}
+          alreadyDone={task.progress >= 100}
         />
       )}
     </Card>
@@ -2108,6 +2114,43 @@ export function EditTaskDialog({
     })();
     return () => { alive = false; };
   }, [task.id]);
+
+  /* ---- 週期回報 ----
+   * 常態工作規則設定的回報欄位（recurring_rule.report_fields）原本只有看板卡片那顆
+   * 「週期回報」按鈕填得到，任務詳情與「我的工作」完全沒有入口，客戶因此以為常態工作
+   * 轉成任務後回報欄位就不見了（2026-09-02 回報）。這裡讓詳情直接帶出欄位與已填值，
+   * 跟著下方「儲存」一起寫入。
+   * report_data 由這裡自己補讀，不依賴呼叫端 select 了哪些欄位（三個呼叫端各撈各的）。
+   */
+  const isRecurring = !!task.recurring_rule_id;
+  const { fields: reportFields, loading: reportFieldsLoading, error: reportFieldsErr } =
+    useReportFields(task.recurring_rule_id, isRecurring);
+  const [reportValues, setReportValues] = useState<ReportValues>({});
+  const [reportLoaded, setReportLoaded] = useState(false);
+  const [reportErr, setReportErr] = useState<string | null>(null);
+  // reportDirty：使用者沒動過就不要把 report_data 放進 patch。
+  // 跟 closing_summary 同一個道理 —— 補讀還沒回來就按儲存，會用空物件蓋掉已回報的內容。
+  const [reportDirty, setReportDirty] = useState(false);
+  useEffect(() => {
+    if (!isRecurring) return;
+    let alive = true;
+    setReportLoaded(false); setReportErr(null); setReportDirty(false);
+    void (async () => {
+      const { data, error } = await supabase
+        .from("task").select("report_data").eq("id", task.id).maybeSingle();
+      if (!alive) return;
+      if (error) { setReportErr(formatErr(error)); return; }
+      setReportValues((data?.report_data as ReportValues) ?? {});
+      setReportLoaded(true);
+    })();
+    return () => { alive = false; };
+  }, [task.id, isRecurring]);
+  // 規則後來把欄位刪掉、但任務上還留著值的，另外列出來只給檢視，不讓歷史回報從畫面消失
+  const reportOrphans = useMemo(
+    () => orphanReportEntries(reportFields, reportValues),
+    [reportFields, reportValues],
+  );
+
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -2140,6 +2183,11 @@ export function EditTaskDialog({
       patch.completed_at = new Date().toISOString();
     } else {
       patch.completed_at = null;
+    }
+    // 週期回報：補讀成功且使用者真的動過才寫，否則不進 patch
+    //（補讀失敗時用空物件寫回去 = 把既有回報內容清空）
+    if (isRecurring && reportLoaded && reportDirty) {
+      (patch as { report_data?: unknown }).report_data = reportValues;
     }
     // closing_summary 還沒進 types.ts，走 any 版 client 才不會被型別擋掉。
     // 從已完成退回進行中時摘要保留，不無聲清掉使用者寫過的內容。
@@ -2246,6 +2294,58 @@ export function EditTaskDialog({
           <Field label="說明">
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} disabled={readOnly} />
           </Field>
+          {isRecurring && (
+            <div className="rounded-md border bg-muted/20 px-3 py-2.5 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                  <Repeat className="w-3 h-3" /> 週期回報
+                </div>
+                {task.occurrence_date && (
+                  <span className="text-[11px] text-muted-foreground tabular-nums">
+                    週期日 {task.occurrence_date}
+                  </span>
+                )}
+              </div>
+              {reportFieldsErr || reportErr ? (
+                <div className="text-xs text-destructive">
+                  回報欄位載入失敗：{reportFieldsErr ?? reportErr}
+                </div>
+              ) : reportFieldsLoading || !reportLoaded ? (
+                <div className="text-xs text-muted-foreground">載入中…</div>
+              ) : reportFields.length === 0 && reportOrphans.length === 0 ? (
+                <div className="text-xs text-muted-foreground">
+                  這個常態工作沒有設定回報欄位（可到「常態工作」頁編輯規則新增）。
+                </div>
+              ) : (
+                <>
+                  <ReportFieldsForm
+                    fields={reportFields}
+                    values={reportValues}
+                    disabled={readOnly || busy}
+                    onChange={(label, v) => {
+                      setReportValues((s) => ({ ...s, [label]: v }));
+                      setReportDirty(true);
+                    }}
+                  />
+                  {reportOrphans.length > 0 && (
+                    <div className="rounded-md border bg-background px-2.5 py-1.5 space-y-1">
+                      <div className="text-[11px] text-muted-foreground">規則已移除的欄位（僅供檢視）</div>
+                      {reportOrphans.map(([k, v]) => (
+                        <div key={k} className="text-xs">
+                          <span className="text-muted-foreground">{k}：</span>{formatReportValue(v)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!readOnly && (
+                    <div className="text-[11px] text-muted-foreground">
+                      填好後按下方「儲存」一併寫入；要同時結案請把狀態改成已完成。
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Field label="狀態">
               <Select value={statusId} onValueChange={setStatusId} disabled={readOnly}>
