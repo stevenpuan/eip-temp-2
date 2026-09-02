@@ -501,7 +501,7 @@ function UsersPage() {
       )}
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>編輯帳號 — {editing?.full_name ?? editing?.email}</DialogTitle>
           </DialogHeader>
@@ -565,7 +565,7 @@ function UsersPage() {
       </Dialog>
 
       <Dialog open={createOpen} onOpenChange={(o) => { if (!o) closeCreate(); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{created ? "建立成功" : "新增帳號"}</DialogTitle>
           </DialogHeader>
@@ -630,7 +630,7 @@ function UsersPage() {
       </Dialog>
 
       <Dialog open={!!resetting} onOpenChange={(o) => { if (!o) closeReset(); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{resetDone ? "已重設密碼" : "重設密碼"}</DialogTitle>
           </DialogHeader>
@@ -676,7 +676,7 @@ function UsersPage() {
       </Dialog>
 
       <Dialog open={!!deleting} onOpenChange={(o) => { if (!o) closeDelete(); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>永久刪除帳號</DialogTitle>
           </DialogHeader>

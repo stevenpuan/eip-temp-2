@@ -359,7 +359,7 @@ function AnnouncementFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" aria-describedby={undefined}>
         <DialogHeader><DialogTitle>{isEdit ? "編輯公告" : "發布公告"}</DialogTitle></DialogHeader>
         <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto pr-1">
           <Field label="標題"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Field>

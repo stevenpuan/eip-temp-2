@@ -1735,7 +1735,7 @@ function CreateTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" aria-describedby={undefined}>
         <DialogHeader><DialogTitle>建立任務</DialogTitle></DialogHeader>
         <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto pr-1">
           <Field label="標題"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="任務標題" /></Field>
@@ -2299,7 +2299,7 @@ export function EditTaskDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>{readOnly ? "任務詳情" : "編輯任務"}</DialogTitle>
         </DialogHeader>

@@ -209,7 +209,7 @@ export function QuickReportButton() {
       </Button>
 
       <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : closeDialog())}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>快速回報</DialogTitle>
           </DialogHeader>

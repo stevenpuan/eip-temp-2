@@ -57,7 +57,7 @@ function Page() {
       <PageHeader title="問題反饋" description="回報系統問題" actions={can("issue_reports", "create") ? (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button>回報問題</Button></DialogTrigger>
-          <DialogContent>
+          <DialogContent aria-describedby={undefined}>
             <DialogHeader><DialogTitle>回報問題</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div className="space-y-1"><Label>標題</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} /></div>

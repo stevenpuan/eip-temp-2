@@ -668,7 +668,7 @@ function CalendarPage() {
       </Card>
 
       <Dialog open={peOpen} onOpenChange={(o) => { if (!o) setPeOpen(false); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{peEditing ? "編輯個人行程" : "新增個人行程"}</DialogTitle>
           </DialogHeader>
@@ -739,7 +739,7 @@ function CalendarPage() {
       </Dialog>
 
       <Dialog open={!!peViewing} onOpenChange={(o) => { if (!o) setPeViewing(null); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{peViewing?.title}</DialogTitle>
           </DialogHeader>

@@ -419,7 +419,7 @@ function KpiDialog({ kpi, projectId, tenantId, onClose, onSaved }: { kpi: Kpi | 
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader><DialogTitle>{kpi ? "編輯 KPI" : "新增 KPI"}</DialogTitle></DialogHeader>
         <div className="grid gap-3 py-2">
           <Field label="名稱"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="例：客戶滿意度" /></Field>
@@ -682,7 +682,7 @@ function NewTaskDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader><DialogTitle>新增任務</DialogTitle></DialogHeader>
         <div className="grid gap-3 py-2">
           <Field label="標題"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
@@ -799,7 +799,7 @@ function RiskDialog({ risk, projectId, tenantId, onClose, onSaved }: { risk: Ris
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader><DialogTitle>{risk ? "編輯風險" : "新增風險"}</DialogTitle></DialogHeader>
         <div className="grid gap-3 py-2">
           <Field label="風險名稱"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
@@ -911,7 +911,7 @@ function MeetingsSection({ projectId, meetings, canEdit }: { projectId: string; 
         </div>
       )}
       <Dialog open={linkOpen} onOpenChange={(o) => !o && setLinkOpen(false)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
           <DialogHeader><DialogTitle>關聯會議</DialogTitle></DialogHeader>
           <div className="space-y-2 py-2">
             <Label className="text-xs text-muted-foreground">選擇要關聯到本專案的會議</Label>

@@ -510,7 +510,7 @@ function RoutineDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && !saving && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>{isEdit ? "編輯例行項目" : "新增例行項目"}</DialogTitle>
         </DialogHeader>

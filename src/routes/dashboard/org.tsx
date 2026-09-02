@@ -676,7 +676,7 @@ function DeptFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>{mode === "create" ? "新增部門" : "編輯部門"}</DialogTitle>
         </DialogHeader>

@@ -165,7 +165,7 @@ export function RecurringReportDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>週期工作回報</DialogTitle>
         </DialogHeader>

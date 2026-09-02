@@ -1168,7 +1168,7 @@ function EditReportDialog({
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>編輯{TYPE_LABEL[report.type] ?? "回報"}</DialogTitle>
         </DialogHeader>

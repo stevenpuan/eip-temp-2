@@ -87,7 +87,7 @@ function Page() {
       <PageHeader title="代碼字典" description="集中維護各種下拉選項" actions={canCreate ? (
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild><Button>新增代碼</Button></DialogTrigger>
-          <DialogContent>
+          <DialogContent aria-describedby={undefined}>
             <DialogHeader><DialogTitle>新增代碼</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div className="space-y-1"><Label>類別 category</Label><Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="如 issue_severity" /></div>
@@ -132,7 +132,7 @@ function Page() {
       ))}
 
       <Dialog open={!!edit} onOpenChange={(o) => !o && setEdit(null)}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader><DialogTitle>編輯代碼</DialogTitle></DialogHeader>
           {edit && (
             <div className="space-y-3">

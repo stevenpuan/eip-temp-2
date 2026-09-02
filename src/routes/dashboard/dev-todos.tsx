@@ -63,7 +63,7 @@ function Page() {
       <PageHeader title="代辦事項" description="系統開發中待處理的工作項目" actions={can("dev_todos", "create") ? (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button>新增代辦</Button></DialogTrigger>
-          <DialogContent>
+          <DialogContent aria-describedby={undefined}>
             <DialogHeader><DialogTitle>新增代辦</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div className="space-y-1"><Label>標題</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} /></div>

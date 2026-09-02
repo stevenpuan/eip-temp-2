@@ -532,7 +532,10 @@ function RuleDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className="max-w-3xl max-h-[90vh] overflow-y-auto"
+        aria-describedby={undefined}
+      >
         <DialogHeader><DialogTitle>{rule ? "編輯規則" : "新增規則"}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-4">
           <div className="col-span-2 space-y-1.5">

@@ -66,7 +66,7 @@ function Page() {
       <PageHeader title="開發歷程" description="版本與更新紀錄" actions={can("dev_history", "create") ? (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button>新增版本</Button></DialogTrigger>
-          <DialogContent>
+          <DialogContent aria-describedby={undefined}>
             <DialogHeader><DialogTitle>新增開發歷程</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div className="space-y-1"><Label>版本</Label><Input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="v1.1" /></div>

@@ -119,7 +119,7 @@ function Page() {
       </CardContent></Card>
 
       <Dialog open={!!form} onOpenChange={(o) => !o && setForm(null)}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[85vh] overflow-y-auto" aria-describedby={undefined}>
           <DialogHeader><DialogTitle>{isNew ? "新增選單" : "編輯選單"}</DialogTitle></DialogHeader>
           {form && (
             <div className="space-y-3">

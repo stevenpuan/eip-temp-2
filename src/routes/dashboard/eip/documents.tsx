@@ -723,7 +723,10 @@ function DocDetailDialog({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className="max-w-4xl max-h-[90vh] overflow-y-auto"
+        aria-describedby={undefined}
+      >
         {docQ.isLoading || !doc ? (
           <div className="py-12 text-center text-muted-foreground">載入中…</div>
         ) : (
@@ -1043,7 +1046,10 @@ function DocEditorDialog({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className="max-w-3xl max-h-[90vh] overflow-y-auto"
+        aria-describedby={undefined}
+      >
         <DialogHeader>
           <DialogTitle>{mode === "new" ? "新增文件" : `編輯文件(將寫入 v${(doc?.current_version ?? 0) + 1})`}</DialogTitle>
         </DialogHeader>

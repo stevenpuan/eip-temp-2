@@ -487,7 +487,7 @@ function EditProjectDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" aria-describedby={undefined}>
         <DialogHeader><DialogTitle>編輯專案</DialogTitle></DialogHeader>
         <div className="grid gap-3 py-2">
           <Field label="名稱"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
@@ -600,7 +600,7 @@ function CreateProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" aria-describedby={undefined}>
         <DialogHeader><DialogTitle>新增專案</DialogTitle></DialogHeader>
         <div className="grid gap-3 py-2">
           <Field label="名稱"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>

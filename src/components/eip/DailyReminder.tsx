@@ -45,7 +45,7 @@ export function DailyReminder() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Bell className="w-4 h-4 text-primary" /> 今日提醒
