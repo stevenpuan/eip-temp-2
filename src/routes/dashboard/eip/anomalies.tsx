@@ -3,12 +3,13 @@ import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ShieldAlert, Inbox, Paperclip, Trash2, Plus, Download } from "lucide-react";
+import { ShieldAlert, Inbox, Paperclip, Trash2, Plus, Download, Printer } from "lucide-react";
 
 // eip_anomaly / eip_anomaly_attachment 尚未進 src/integrations/supabase/types.ts，
 // 這裡用 any 形式的 client，型別在本檔自行宣告。
 import { supabase } from "@/lib/supabase";
 import { exportToExcel } from "@/lib/eip-export";
+import { printAnomalyReport } from "@/lib/eip-anomaly-print";
 import { useAuth } from "@/lib/auth";
 import { useEipUser } from "@/lib/eip-user";
 import { useActiveUsers, useAllUsers } from "@/hooks/useUsers";
@@ -552,6 +553,8 @@ function AnomaliesPage() {
           meId={appUser.id}
           canManage={canManageRow(openRow)}
           canDelete={canDeleteRow(openRow)}
+          canPrint={canExport}
+          deptName={deptNameOf(openRow.department_id)}
           nameOf={nameOf}
           onClose={() => setOpenRow(null)}
           onChanged={() => {
@@ -1083,6 +1086,8 @@ function DetailDialog({
   meId,
   canManage,
   canDelete,
+  canPrint,
+  deptName,
   nameOf,
   onClose,
   onChanged,
@@ -1091,6 +1096,9 @@ function DetailDialog({
   meId: string;
   canManage: boolean;
   canDelete: boolean;
+  /** 列印個人疏失報告：沿用「匯出」權限，人資／主管有、一般同仁沒有 */
+  canPrint: boolean;
+  deptName: string;
   nameOf: (id: string | null) => string;
   onClose: () => void;
   onChanged: () => void;
@@ -1136,6 +1144,27 @@ function DetailDialog({
       return toast.error(`刪除失敗：${res.reason ?? "只有開立者本人或系統管理者可刪除"}`);
     toast.success("已刪除，已移至回收區");
     onChanged();
+  };
+
+  // 個人疏失報告（人資紙本格式，一筆缺失一張）：印的是資料庫裡已儲存的內容，
+  // 不是畫面上還沒送出的草稿，所以直接取 row 而不是 state。
+  const printReport = () => {
+    const ok = printAnomalyReport({
+      code: row.code,
+      occurredOn: row.occurred_on,
+      raisedAt: row.raised_at,
+      title: row.title,
+      detail: row.detail,
+      severityLabel: SEVERITY_LABEL[row.severity] ?? row.severity,
+      amount: row.amount,
+      cause: row.cause,
+      actionTaken: row.action_taken,
+      prevention: row.prevention,
+      subjectName: nameOf(row.subject_id),
+      departmentName: deptName,
+      raisedByName: nameOf(row.raised_by),
+    });
+    if (!ok) toast.error("無法開啟列印視窗，請改用瀏覽器的列印功能");
   };
 
   const submitFill = () => {
@@ -1358,6 +1387,12 @@ function DetailDialog({
             >
               <Trash2 className="w-4 h-4 mr-1" />
               刪除
+            </Button>
+          )}
+          {canPrint && (
+            <Button variant="outline" onClick={printReport}>
+              <Printer className="w-4 h-4 mr-1" />
+              列印報告
             </Button>
           )}
           <Button variant="outline" onClick={onClose}>
