@@ -271,11 +271,11 @@ function RecurringPage() {
     toast.success("已刪除"); refresh();
   };
   /* 「立即產生/檢查」的顯示判準。
-   * 這顆按鈕原本沒有任何權限判斷：一般成員看得到但按下去只會拿到「權限不足」，
-   * 而部門主管其實按得動。不能改用 can("eip_recurring","create") 當閘門 ——
-   * role_module_permissions 裡 dept_manager 的 create/edit 是 false、member 反而是 true，
-   * 用它會把部門主管現有的能力縮掉，又留著給成員的假按鈕。
-   * 所以問後端同一支判準（管理者 ∪ 有管轄範圍/自己負責的規則），前後端不會再各說一套。
+   * 這顆按鈕原本沒有任何權限判斷：一般成員看得到但按下去只會拿到「權限不足」（後端只讓
+   * 管理者與部門主管手動觸發）。也不能改用 can("eip_recurring","create") 當閘門 ——
+   * 一般成員在 eip_recurring 的矩陣是 VCE--（可新增/編輯自己的規則），用它一樣會留著假按鈕；
+   * 而部門主管即使矩陣全開，管轄範圍內沒有規則時後端也跑不出任何東西。
+   * 所以直接問後端同一支判準（管理者 ∪ 有管轄範圍/自己負責的規則），前後端不會各說一套。
    */
   const canRunQ = useQuery({
     queryKey: ["eip", "can-run-recurring"],

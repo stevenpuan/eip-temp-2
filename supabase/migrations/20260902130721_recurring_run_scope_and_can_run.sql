@@ -101,10 +101,13 @@ $function$;
 
 
 -- 前端「立即產生/檢查」按鈕的顯示判準，與上面函式的實際允許範圍一致。
--- 原本那顆按鈕沒有任何權限判斷：一般成員看得到但按了會拿到「權限不足」（假按鈕），
--- 而部門主管其實按得動。不能改用 can('eip_recurring','create') 當閘門 ——
--- role_module_permissions 裡 dept_manager 的 create/edit 是 false、member 反而是 true，
--- 用它會把部門主管現有的能力縮掉，又留著給成員的假按鈕。
+-- 原本那顆按鈕沒有任何權限判斷：一般成員看得到但按了會拿到「權限不足」（假按鈕）。
+-- 也不能改用 can('eip_recurring','create') 當閘門 —— role_module_permissions 裡
+-- 一般成員的 eip_recurring 是 VCE--（可新增/編輯自己的規則），用它一樣會留著那顆假按鈕；
+-- 而且部門主管即使矩陣全開，管轄範圍內沒有規則時後端也跑不出任何東西。
+-- 所以顯示判準跟後端走同一支函式，前後端不會各說一套。
+-- （更正 2026-09-02：先前註解誤寫成「dept_manager 的 create/edit 是 false」，
+--   那是 eip_phone_order 的值；eip_recurring 的 dept_manager 實際是 VCEDX 全開。）
 create or replace function public.eip_can_run_recurring()
  returns boolean
  language sql
