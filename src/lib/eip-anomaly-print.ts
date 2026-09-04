@@ -1,5 +1,5 @@
 // 異常缺失「個人疏失報告」列印：把單筆缺失套進人資既有的紙本格式
-// （每日訂單疏失統計(週)彙整表，範本檔 1130913），交給瀏覽器列印／存 PDF。
+// （每日訂單疏失表，範本檔 1130913），交給瀏覽器列印／存 PDF。
 //
 // 為什麼不做 Word／PDF 檔：人資的需求是「確認資訊沒問題就直接印，不用再調格式」，
 // 瀏覽器列印對話框本身就是預覽，也能直接存 PDF，不必再多裝 docx／pdf 套件。
@@ -7,8 +7,8 @@
 // 為什麼用隱藏 iframe 而不是 window.open：新視窗會被彈出視窗攔截擋掉，
 // 使用者只會看到「按了沒反應」；iframe 不受攔截影響。
 //
-// 範本上的固定文字（公司名、流程四點、繳交三點）依客戶指示照原樣印，
-// 集中放在下方常數，換公司或改文字只動這一處。
+// 範本上的固定文字（公司名、表單名、流程四點）依客戶指示照原樣印，集中放在下方常數，
+// 換公司或改文字只動這一處。2026-09-03 客戶改表單名為「每日訂單疏失表」並拿掉底部繳交三點。
 
 export type AnomalyPrintData = {
   code: string | null;
@@ -28,7 +28,7 @@ export type AnomalyPrintData = {
 };
 
 const COMPANY_NAME = "陞煇食品股份有限公司";
-const FORM_TITLE = "每日訂單疏失統計(週)彙整表";
+const FORM_TITLE = "每日訂單疏失表";
 const PROCESS_HEADING = "強化訂單、預防疏失基本流程";
 const PROCESS_STEPS: { text: string; underline?: string }[] = [
   { text: "1.電話接完訂單 請和客戶複誦做確認" },
@@ -38,11 +38,6 @@ const PROCESS_STEPS: { text: string; underline?: string }[] = [
     underline: "(休息附註休 電話未通 請附註 需再撥號 請附註)",
   },
   { text: "4.電話接單臨時寫的便條紙 請訂在總單後面驗核  (並有接單人、人員核對 簽名)" },
-];
-const SUBMIT_STEPS = [
-  "1.當日下班前繳交至主管辦公室",
-  "2.主管批示後，電子檔請上傳至Z槽，該份文件之檔案夾",
-  "3.每月月會議紀錄人員彙整後，於月會上提報案例檢討",
 ];
 
 // 缺失標題／說明／原因都是使用者輸入，一律轉義後才進 HTML
@@ -118,7 +113,6 @@ export function buildAnomalyReportHtml(a: AnomalyPrintData): string {
   td p { margin: 0 0 1.5mm; white-space: pre-wrap; }
   tr.body td { height: 42mm; }
   tr.sign td { height: 22mm; }
-  .footer p { margin: 0 0 1mm; }
   @media print { .sheet { width: auto; } }
 </style>
 </head>
@@ -173,9 +167,6 @@ export function buildAnomalyReportHtml(a: AnomalyPrintData): string {
     </tbody>
   </table>
 
-  <div class="footer">
-    ${SUBMIT_STEPS.map((s) => `<p>${esc(s)}</p>`).join("\n    ")}
-  </div>
 </div>
 </body>
 </html>`;
