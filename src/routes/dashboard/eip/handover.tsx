@@ -696,6 +696,9 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
   );
   // 連續請假（例：9/16 事假 ＋ 9/17~9/27 婚假）併成一張卡，代辦一起列
   const groups = useMemo(() => groupLeaveReports(reports), [reports]);
+  // 切成「未結案」與「已結案」兩段，已結案置頂讓使用者切換時一眼看到
+  const openGroups = useMemo(() => groups.filter((g) => !g.closed), [groups]);
+  const closedGroups = useMemo(() => groups.filter((g) => g.closed), [groups]);
 
   // 代辦一次撈完（含已結案的單），列表要顯示 x/y；用 id 集合當 key，切換開關不重打
   const reportIds = useMemo(() => allReports.map((r) => r.id).sort(), [allReports]);
@@ -991,7 +994,117 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
           </div>
         ) : (
           <div className="space-y-3">
-            {groups.map((g) => {
+            {/* 已結案群組置頂，切換時一眼就看到 */}
+            {showClosed && closedGroups.length > 0 && (
+              <>
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-xs font-medium text-emerald-700">已結案</span>
+                  <div className="flex-1 border-t border-emerald-200" />
+                </div>
+                {closedGroups.map((g) => {
+                  const items = orderedItems(g);
+                  const done = items.filter((i) => i.done_at).length;
+                  const unassigned = items.filter((i) => !i.assignee_id).length;
+                  const closed = g.closed;
+                  const merged = g.reports.length > 1;
+                  const span = merged
+                    ? { text: `${g.start} ～ ${g.end}`, tag: `${daysInclusive(g.start, g.end)} 天` }
+                    : leaveSpan(g.primary.leave_from, g.primary.leave_to, g.primary.report_date);
+                  const deputyId = g.primary.deputy_id ?? g.reports.find((r) => r.deputy_id)?.deputy_id ?? null;
+                  const deputyMixed = new Set(g.reports.map((r) => r.deputy_id ?? "")).size > 1;
+                  const deputyOptions = withCurrent(others, deputyId, nameOf, activeIds);
+                  const canDrag = false;
+                  const allItemsDone = !closed && items.length > 0 && done === items.length;
+                  return (
+                    <div key={g.key} className="rounded-md border overflow-hidden opacity-80">
+                      <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/40 border-b">
+                        <span className="text-sm font-medium">{span.text}</span>
+                        {span.tag && (
+                          <Badge variant="secondary" className="text-[11.5px]">
+                            {span.tag}
+                          </Badge>
+                        )}
+                        {!merged && (
+                          <Badge variant="outline" className="text-[11.5px]">
+                            {leaveTypeName(g.primary.leave_type)}
+                          </Badge>
+                        )}
+                        <Badge
+                          variant="outline"
+                          className="bg-emerald-100 text-emerald-700 border-emerald-300"
+                        >
+                          已結案
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {itemsQ.isLoading ? (
+                            "代辦載入中…"
+                          ) : itemsQ.isError ? (
+                            <span className="text-destructive">代辦載入失敗</span>
+                          ) : (
+                            `代辦 ${done}/${items.length}`
+                          )}
+                        </span>
+                        <div className="flex-1" />
+                        <span className="text-xs text-muted-foreground">代理人</span>
+                        <span className="text-xs font-medium">{nameOf(deputyId)}</span>
+                      </div>
+                      {merged && (
+                        <div className="px-3 py-1.5 text-[12.5px] text-muted-foreground bg-muted/20 border-b">
+                          這段連續請假分成 {g.reports.length} 張假單（假別不同要分開送）：
+                          {g.reports.map((r) => segmentLabel(r)).join("、")}
+                          {deputyMixed && (
+                            <span className="text-amber-700">（原本各段代理人不同）</span>
+                          )}
+                        </div>
+                      )}
+                      {itemsQ.isError ? (
+                        <div className="flex items-center gap-2 px-3 py-2 text-xs">
+                          <span className="text-destructive">代辦事項載入失敗</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-xs"
+                            onClick={() => void itemsQ.refetch()}
+                          >
+                            重試
+                          </Button>
+                        </div>
+                      ) : items.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">
+                          還沒有代辦事項。
+                        </div>
+                      ) : (
+                        <div className="divide-y">
+                          {items.map((it) => (
+                            <div key={it.id}>
+                              <LeaveItemRow
+                                item={it}
+                                users={withCurrent(others, it.assignee_id, nameOf, activeIds)}
+                                nameOf={nameOf}
+                                deputyId={deputyId}
+                                canEdit={false}
+                                canDrag={false}
+                                onDragStart={() => {}}
+                                onDragEnd={() => {}}
+                                onSave={saveItem}
+                                onDelete={removeItem}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {openGroups.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">未結案</span>
+                    <div className="flex-1 border-t border-border" />
+                  </div>
+                )}
+              </>
+            )}
+            {openGroups.map((g) => {
               const items = orderedItems(g);
               const done = items.filter((i) => i.done_at).length;
               const unassigned = items.filter((i) => !i.assignee_id).length;
