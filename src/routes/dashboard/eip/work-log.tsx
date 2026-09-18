@@ -38,6 +38,10 @@ type Item = {
   link?: string;
   /** 是否要求填寫執行內容（來自個人例行範本 require_content） */
   req?: boolean;
+  /** 回報欄位值（如 {"成品：":"1546258","半成品：":"1277905",...}） */
+  report_data?: Record<string, string>;
+  /** 回報欄位定義（來自 recurring_rule.report_fields） */
+  report_fields?: Array<{type: string; label: string}>;
 };
 /** 去重鍵：有來源用 source+ref_id，手動新增的項目退回比對文字 */
 const itemKey = (x: Item) => (x.source && x.ref_id ? `${x.source}:${x.ref_id}` : `text:${(x.text ?? "").trim()}`);
@@ -411,6 +415,30 @@ function Section({ title, Icon, tone, items, editable, onChange, onToggleDone }:
                   )
                 ) : null}
               </>
+            )}
+            {/* ── 回報欄位（來自任務看板） ── */}
+            {it.report_fields && it.report_fields.length > 0 && (
+              <div className="mt-1.5 ml-6 flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+                {it.report_fields.map((f) => (
+                  <label key={f.label} className="inline-flex items-center gap-1 text-muted-foreground">
+                    <span className="shrink-0">{f.label}</span>
+                    {editable ? (
+                      <input
+                        type={f.type === "number" ? "number" : "text"}
+                        value={(it.report_data ?? {})[f.label] ?? ""}
+                        onChange={(e) => setItem(i, { report_data: { ...(it.report_data ?? {}), [f.label]: e.target.value } })}
+                        className="w-24 rounded-md bg-transparent px-1 py-0.5 text-xs font-medium text-foreground outline-none border border-border/60 focus:border-primary tabular-nums"
+                      />
+                    ) : (
+                      <span className="font-medium text-foreground tabular-nums">
+                        {f.type === "number" && (it.report_data ?? {})[f.label]
+                          ? Number((it.report_data ?? {})[f.label]).toLocaleString()
+                          : ((it.report_data ?? {})[f.label] || "\u2013")}
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
             )}
           </li>
         ))}
