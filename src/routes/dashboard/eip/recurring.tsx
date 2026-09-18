@@ -69,7 +69,12 @@ const MONTH_PRESETS: { label: string; months: number[] }[] = [
 ];
 
 function summarize(r: Rule): string {
-  if (r.freq === "daily") return "每日";
+  if (r.freq === "daily") {
+    const aw: number[] = (r as any).active_weekdays ?? [];
+    if (!aw.length || aw.length === 7) return "每日";
+    const labels = WEEKDAYS.filter((w) => aw.includes(w.v)).map((w) => w.label);
+    return "每" + labels.join("、");
+  }
   if (r.freq === "manual") return "手動";
   if (r.freq === "weekly") {
     const w = WEEKDAYS.find((x) => x.v === r.weekday);
@@ -502,6 +507,19 @@ function RuleDialog({
   const [priority, setPriority] = useState<Priority>(rule?.priority ?? "normal");
   const [freq, setFreq] = useState<string>(rule?.freq ?? "monthly");
   const [weekday, setWeekday] = useState<number>(rule?.weekday ?? 1);
+  const [activeWeekdays, setActiveWeekdays] = useState<number[]>(
+    Array.isArray((rule as any)?.active_weekdays) && (rule as any).active_weekdays.length > 0
+      ? (rule as any).active_weekdays
+      : [1, 2, 3, 4, 5, 6, 7]
+  );
+  const toggleWeekdayCheck = (d: number) =>
+    setActiveWeekdays((s) => {
+      if (s.includes(d)) {
+        if (s.length <= 1) return s;          // 至少保留一天
+        return s.filter((x) => x !== d);
+      }
+      return [...s, d].sort((a, b) => a - b);
+    });
   const [months, setMonths] = useState<number[]>(rule?.months ?? []);
   const [days, setDays] = useState<string>((rule?.days_of_month ?? []).join(","));
   const [useMonthEnd, setUseMonthEnd] = useState(rule?.use_month_end ?? false);
@@ -535,6 +553,7 @@ function RuleDialog({
         priority,
         freq,
         weekday: freq === "weekly" ? weekday : null,
+        active_weekdays: freq === "daily" && activeWeekdays.length < 7 ? activeWeekdays : null,
         months: (freq === "monthly" || freq === "yearly") ? (months.length ? months : null) : null,
         days_of_month: (freq === "monthly" || freq === "yearly") && !useMonthEnd ? parseList(days) : null,
         use_month_end: (freq === "monthly" || freq === "yearly") ? useMonthEnd : false,
@@ -641,6 +660,19 @@ function RuleDialog({
                 </SelectContent>
               </Select>
             </div>
+
+            {freq === "daily" && (
+              <div className="space-y-1.5">
+                <Label>執行日 <span className="text-xs text-muted-foreground">（預設每天）</span></Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {WEEKDAYS.map((w) => (
+                    <Button key={w.v} type="button" size="sm"
+                      variant={activeWeekdays.includes(w.v) ? "default" : "outline"}
+                      onClick={() => toggleWeekdayCheck(w.v)}>{w.label}</Button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {freq === "weekly" && (
               <div className="space-y-1.5">
