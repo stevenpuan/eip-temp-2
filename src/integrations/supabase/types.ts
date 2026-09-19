@@ -3593,6 +3593,7 @@ export type Database = {
       }
       recurring_rule: {
         Row: {
+          active_weekdays: number[] | null
           advance_days: number[]
           counterpart: string | null
           counterpart_user_id: string | null
@@ -3619,6 +3620,7 @@ export type Database = {
           weekday: number | null
         }
         Insert: {
+          active_weekdays?: number[] | null
           advance_days?: number[]
           counterpart?: string | null
           counterpart_user_id?: string | null
@@ -3645,6 +3647,7 @@ export type Database = {
           weekday?: number | null
         }
         Update: {
+          active_weekdays?: number[] | null
           advance_days?: number[]
           counterpart?: string | null
           counterpart_user_id?: string | null
@@ -5127,6 +5130,7 @@ export type Database = {
         Returns: boolean
       }
       eip_can_manage_task: { Args: { p_task_id: string }; Returns: boolean }
+      eip_can_run_recurring: { Args: never; Returns: boolean }
       eip_can_see_announcement: { Args: { p_id: string }; Returns: boolean }
       eip_can_see_leave: { Args: { p_report_id: string }; Returns: boolean }
       eip_can_see_meeting: { Args: { p_meeting_id: string }; Returns: boolean }
@@ -5477,7 +5481,7 @@ export type Database = {
         }
         Returns: boolean
       }
-      eip_run_recurring: { Args: { p_date?: string }; Returns: undefined }
+      eip_run_recurring: { Args: { p_date: string }; Returns: undefined }
       eip_send_line_digests: { Args: never; Returns: number }
       eip_set_routine_item: {
         Args: {
@@ -5618,12 +5622,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5647,11 +5651,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5672,11 +5676,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5697,11 +5701,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5714,11 +5718,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
