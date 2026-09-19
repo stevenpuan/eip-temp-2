@@ -5481,7 +5481,9 @@ export type Database = {
         }
         Returns: boolean
       }
-      eip_run_recurring: { Args: { p_date: string }; Returns: undefined }
+      eip_run_recurring:
+        | { Args: never; Returns: undefined }
+        | { Args: { p_date: string }; Returns: undefined }
       eip_send_line_digests: { Args: never; Returns: number }
       eip_set_routine_item: {
         Args: {
