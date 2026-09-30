@@ -84,11 +84,10 @@ function summarize(r: Rule): string {
     !r.months || r.months.length === 0
       ? r.freq === "monthly" ? "每月" : "每年"
       : `${r.months.join("/")} 月`;
-  const dayPart = r.use_month_end
-    ? "月底"
-    : r.days_of_month && r.days_of_month.length
-      ? `${r.days_of_month.join("/")} 日`
-      : "—";
+  // 指定日期與月底可並用（後端 eip_rule_due_on 兩者是 OR）；
+  // 填 29/30/31 而該月沒有這天時，後端會落在當月最後一天。
+  const dayList = r.days_of_month && r.days_of_month.length ? `${r.days_of_month.join("/")} 日` : "";
+  const dayPart = [dayList, r.use_month_end ? "月底" : ""].filter(Boolean).join("＋") || "—";
   return `${monthPart} ${dayPart}`;
 }
 
@@ -555,7 +554,8 @@ function RuleDialog({
         weekday: freq === "weekly" ? weekday : null,
         active_weekdays: freq === "daily" && activeWeekdays.length < 7 ? activeWeekdays : null,
         months: (freq === "monthly" || freq === "yearly") ? (months.length ? months : null) : null,
-        days_of_month: (freq === "monthly" || freq === "yearly") && !useMonthEnd ? parseList(days) : null,
+        // 勾月底不再清掉指定日期：「15 日＋月底」是合法組合（2026-09-30 修正）
+        days_of_month: (freq === "monthly" || freq === "yearly") ? (parseList(days).length ? parseList(days) : null) : null,
         use_month_end: (freq === "monthly" || freq === "yearly") ? useMonthEnd : false,
         advance_days: parseList(advance),
         repeat_every_days: repeatEvery ? parseInt(repeatEvery, 10) : null,
@@ -711,12 +711,10 @@ function RuleDialog({
                   <Checkbox id="month-end" checked={useMonthEnd} onCheckedChange={(v) => setUseMonthEnd(!!v)} />
                   <Label htmlFor="month-end" className="cursor-pointer">月底</Label>
                 </div>
-                {!useMonthEnd && (
-                  <div className="space-y-1.5">
-                    <Label>每月哪幾日 <span className="text-xs text-muted-foreground">（多個以逗號分隔，如 10,20,30）</span></Label>
-                    <Input value={days} onChange={(e) => setDays(e.target.value)} placeholder="10,20,30" />
-                  </div>
-                )}
+                <div className="space-y-1.5">
+                  <Label>每月哪幾日 <span className="text-xs text-muted-foreground">（多個以逗號分隔，如 10,20,30；可與「月底」並用；填 31 而當月沒有 31 號時，會落在當月最後一天）</span></Label>
+                  <Input value={days} onChange={(e) => setDays(e.target.value)} placeholder="10,20,30" />
+                </div>
               </>
             )}
           </div>
