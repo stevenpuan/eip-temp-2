@@ -40,13 +40,28 @@ export function ReportFieldsForm({
         <div key={`${f.label}-${i}`} className="space-y-1.5">
           <Label className="text-xs">{f.label}</Label>
           {f.type === "checkbox" ? (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                checked={!!values[f.label]}
-                disabled={disabled}
-                onCheckedChange={(v) => onChange(f.label, !!v)}
-              />
-              <span className="text-sm text-muted-foreground">是</span>
+            // 2026-10 客戶需求：勾選欄位要能明確選「是」或「否」。
+            // 舊版只有一個「是」的勾選框，沒勾無法分辨是「否」還是「還沒填」。
+            // 值仍存 boolean（true=是、false=否），未作答＝沒有這個 key；再點一次已選的選項可取消。
+            <div className="flex items-center gap-2" role="radiogroup" aria-label={f.label}>
+              {([true, false] as const).map((opt) => {
+                const selected = values[f.label] === opt;
+                return (
+                  <Button
+                    key={String(opt)}
+                    type="button"
+                    size="sm"
+                    role="radio"
+                    aria-checked={selected}
+                    variant={selected ? "default" : "outline"}
+                    disabled={disabled}
+                    className="h-8 min-w-14"
+                    onClick={() => onChange(f.label, selected ? undefined : opt)}
+                  >
+                    {opt ? "是" : "否"}
+                  </Button>
+                );
+              })}
             </div>
           ) : (
             <Input

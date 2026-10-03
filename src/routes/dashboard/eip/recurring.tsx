@@ -92,7 +92,7 @@ function summarize(r: Rule): string {
 }
 
 const REPORT_TYPE_LABEL: Record<string, string> = {
-  text: "文字", checkbox: "勾選", number: "數字", date: "日期",
+  text: "文字", checkbox: "是／否", number: "數字", date: "日期",
 };
 
 // 列展開後的唯讀明細——把原本只能在「編輯」對話框看到的內文攤開來看，不必進編輯。
@@ -761,7 +761,7 @@ function RuleDialog({
                       <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="text">文字</SelectItem>
-                        <SelectItem value="checkbox">勾選</SelectItem>
+                        <SelectItem value="checkbox">是／否</SelectItem>
                         <SelectItem value="number">數字</SelectItem>
                         <SelectItem value="date">日期</SelectItem>
                       </SelectContent>
