@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/table";
 import type { Database } from "@/integrations/supabase/types";
 import { humanizeError } from "@/lib/eip-error";
+import { isPickableUser } from "@/hooks/useUsers";
 
 export const Route = createFileRoute("/dashboard/eip/recurring")({ component: RecurringPage });
 
@@ -365,7 +366,7 @@ function RecurringPage() {
                 onChange={setFilterOwners}
                 allLabel="全部負責人"
                 itemLabel="負責人"
-                options={(usersQ.data ?? []).map((u) => ({ value: u.id, label: u.name }))}
+                options={(usersQ.data ?? []).filter(isPickableUser).map((u) => ({ value: u.id, label: u.name }))}
                 contentClassName="w-64"
               />
             </div>
@@ -463,7 +464,7 @@ function RecurringPage() {
         </TabsContent>
         <TabsContent value="dashboard">
           <AchievementDashboard
-            users={usersQ.data ?? []}
+            users={(usersQ.data ?? []).filter(isPickableUser)}
             departments={deptQ.data ?? []}
             activeRulesCount={(rulesQ.data ?? []).filter((r) => r.is_active).length}
           />
@@ -474,7 +475,7 @@ function RecurringPage() {
       {open && (
         <RuleDialog
           rule={editing}
-          users={usersQ.data ?? []}
+          users={(usersQ.data ?? []).filter(isPickableUser)}
           departments={deptQ.data ?? []}
           ownerFallback={appUser.id}
           onClose={() => setOpen(false)}

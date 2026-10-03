@@ -252,6 +252,7 @@ export type Database = {
           id: string
           job_title: string | null
           line_user_id: string | null
+          hide_from_pickers: boolean
           must_change_password: boolean
           name: string
           role: Database["public"]["Enums"]["user_role"]
@@ -270,6 +271,7 @@ export type Database = {
           id: string
           job_title?: string | null
           line_user_id?: string | null
+          hide_from_pickers?: boolean
           must_change_password?: boolean
           name: string
           role?: Database["public"]["Enums"]["user_role"]
@@ -288,6 +290,7 @@ export type Database = {
           id?: string
           job_title?: string | null
           line_user_id?: string | null
+          hide_from_pickers?: boolean
           must_change_password?: boolean
           name?: string
           role?: Database["public"]["Enums"]["user_role"]

@@ -23,12 +23,24 @@ import type { AppUser } from "@/lib/eip-user";
 
 const USER_COLUMNS = "*";
 
+/**
+ * 系統帳號（開發者／設定者，app_user.hide_from_pickers = true）不是公司人員，
+ * 不可出現在任何「選人」清單或人數統計；但姓名對照（userMap）要保留，
+ * 否則他留下的歷史紀錄姓名會變空白。
+ * 自己寫查詢的頁面，在「選人」的地方用這個過濾。
+ */
+export function isPickableUser(u: { hide_from_pickers?: boolean | null }): boolean {
+  return !u.hide_from_pickers;
+}
+
 async function fetchUsers(activeOnly: boolean): Promise<AppUser[]> {
   let q = supabase.from("app_user").select(USER_COLUMNS);
   if (activeOnly) q = q.eq("status", "active");
   const { data, error } = await q.order("name");
   if (error) throw error;
-  return (data ?? []) as AppUser[];
+  const rows = (data ?? []) as AppUser[];
+  // useActiveUsers 專供選人 → 一併排除系統帳號；useAllUsers 是姓名對照 → 不排除
+  return activeOnly ? rows.filter(isPickableUser) : rows;
 }
 
 /** 在職人員 —— 給所有「選人」用途 */

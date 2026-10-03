@@ -1,3 +1,4 @@
+import { isPickableUser } from "@/hooks/useUsers";
 import { createFileRoute } from "@tanstack/react-router";
 import { RequirePerm } from "@/components/RequirePerm";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -51,6 +52,7 @@ interface AppUserRow {
   status: string | null;
   deputy_id?: string | null;
   name?: string | null;
+  hide_from_pickers?: boolean | null;
 }
 interface Invitation {
   id: string;
@@ -98,7 +100,7 @@ function UsersPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("app_user")
-        .select("id, department_id, line_user_id, status, deputy_id, name");
+        .select("id, department_id, line_user_id, status, deputy_id, name, hide_from_pickers");
       if (error) throw error;
       return (data ?? []) as AppUserRow[];
     },
@@ -544,7 +546,7 @@ function UsersPage() {
                 <SelectContent>
                   <SelectItem value="none">未設定</SelectItem>
                   {appUsers
-                    .filter((a) => a.status === "active" && a.id !== editing?.id)
+                    .filter((a) => a.status === "active" && a.id !== editing?.id && isPickableUser(a))
                     .map((a) => (
                       <SelectItem key={a.id} value={a.id}>{a.name ?? a.id}</SelectItem>
                     ))}

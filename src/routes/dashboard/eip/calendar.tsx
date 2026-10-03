@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { humanizeError } from "@/lib/eip-error";
+import { isPickableUser } from "@/hooks/useUsers";
 
 export const Route = createFileRoute("/dashboard/eip/calendar")({ component: () => (
     <RequirePerm module="eip_calendar">
@@ -80,7 +81,7 @@ type LeaveInfo = {
   handoverDone: boolean;
 };
 
-type AppUserLite = { id: string; name: string | null };
+type AppUserLite = { id: string; name: string | null; hide_from_pickers?: boolean | null };
 
 const TIME_OPTIONS: string[] = (() => {
   const arr: string[] = [];
@@ -217,7 +218,7 @@ function CalendarPage() {
   const usersQ = useQuery({
     queryKey: ["cal", "app_users"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("app_user").select("id,name").eq("status", "active");
+      const { data, error } = await supabase.from("app_user").select("id,name,hide_from_pickers").eq("status", "active");
       if (error) throw error;
       return (data ?? []) as AppUserLite[];
     },
@@ -716,13 +717,13 @@ function CalendarPage() {
             <div className="space-y-1">
               <Label className="text-xs">分享給</Label>
               <div className="max-h-40 overflow-y-auto border rounded-md p-2 space-y-1">
-                {(usersQ.data ?? []).filter((u) => u.id !== myId).map((u) => (
+                {(usersQ.data ?? []).filter((u) => u.id !== myId && isPickableUser(u)).map((u) => (
                   <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer">
                     <Checkbox checked={peShares.includes(u.id)} onCheckedChange={() => toggleShare(u.id)} />
                     <span>{u.name ?? u.id}</span>
                   </label>
                 ))}
-                {(usersQ.data ?? []).filter((u) => u.id !== myId).length === 0 && (
+                {(usersQ.data ?? []).filter((u) => u.id !== myId && isPickableUser(u)).length === 0 && (
                   <p className="text-xs text-muted-foreground">無其他成員</p>
                 )}
               </div>

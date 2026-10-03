@@ -1,3 +1,4 @@
+import { isPickableUser } from "@/hooks/useUsers";
 import { createFileRoute } from "@tanstack/react-router";
 import { RequirePerm } from "@/components/RequirePerm";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -61,6 +62,7 @@ interface Member {
   status: string | null;
   department_id: string | null;
   tenant_id: string | null;
+  hide_from_pickers?: boolean | null;
 }
 
 /**
@@ -127,7 +129,7 @@ function Page() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("app_user")
-        .select("id, name, email, employee_no, job_title, extension, role, status, department_id, tenant_id")
+        .select("id, name, email, employee_no, job_title, extension, role, status, department_id, tenant_id, hide_from_pickers")
         .eq("tenant_id", tenantId!)
         .order("employee_no", { ascending: true });
       if (error) throw error;
@@ -188,7 +190,7 @@ function Page() {
     return m;
   }, [allUsers]);
 
-  const activeCount = useMemo(() => allUsers.filter((u) => u.status === "active").length, [allUsers]);
+  const activeCount = useMemo(() => allUsers.filter((u) => u.status === "active" && isPickableUser(u)).length, [allUsers]);
 
   const tree = useMemo(() => {
     const byParent = new Map<string | null, Dept[]>();
@@ -222,7 +224,7 @@ function Page() {
 
   const members = useMemo(
     () => allUsers
-      .filter((u) => u.department_id === selectedId && u.status === "active")
+      .filter((u) => u.department_id === selectedId && u.status === "active" && isPickableUser(u))
       .sort((a, b) => (a.employee_no ?? "").localeCompare(b.employee_no ?? "")),
     [allUsers, selectedId],
   );
@@ -478,7 +480,7 @@ function Page() {
           open={supDialogOpen}
           onClose={() => setSupDialogOpen(false)}
           dept={selected}
-          users={allUsers.filter((u) => u.status === "active")}
+          users={allUsers.filter((u) => u.status === "active" && isPickableUser(u))}
           current={selectedSups}
           createdBy={me?.id ?? null}
           onSaved={() => { refetchSups(); refetchUsers(); setSupDialogOpen(false); }}
@@ -490,7 +492,7 @@ function Page() {
           open={managerDialogOpen}
           onClose={() => setManagerDialogOpen(false)}
           dept={selected}
-          users={allUsers.filter((u) => u.status === "active")}
+          users={allUsers.filter((u) => u.status === "active" && isPickableUser(u))}
           onSaved={() => { refetchDepts(); refetchUsers(); setManagerDialogOpen(false); }}
         />
       )}

@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { humanizeError } from "@/lib/eip-error";
+import { isPickableUser } from "@/hooks/useUsers";
 
 export const Route = createFileRoute("/dashboard/notification-settings")({ component: () => (
     <RequirePerm module="eip_notification_settings">
@@ -91,9 +92,10 @@ function Page() {
   const { data: users = [] } = useQuery({
     queryKey: ["appusers_min"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("app_user").select("id,name,department_id").eq("status", "active").order("name");
+      const { data, error } = await supabase.from("app_user").select("id,name,department_id,hide_from_pickers").eq("status", "active").order("name");
       if (error) throw error;
-      return data as UserLite[];
+      // 系統帳號（開發者）不列入可選人員
+      return (data ?? []).filter(isPickableUser) as UserLite[];
     },
   });
   // 注意：rows 必須是穩定參考，否則下方的 useEffect 會無限重跑（Maximum update depth exceeded）

@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { humanizeError } from "@/lib/eip-error";
+import { isPickableUser } from "@/hooks/useUsers";
 
 // 跨部門「唯讀」資料授權設定頁。
 // 後端：表 eip_dept_view_grant + 函式 eip_can_view_dept_shared()（migration cross_dept_view_share_readonly）。
@@ -64,11 +65,12 @@ function Page() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("app_user")
-        .select("id,name,department_id")
+        .select("id,name,department_id,hide_from_pickers")
         .eq("status", "active")
         .order("name");
       if (error) throw error;
-      return data as UserLite[];
+      // 系統帳號（開發者）不列入可選人員
+      return (data ?? []).filter(isPickableUser) as UserLite[];
     },
   });
 
