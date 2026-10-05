@@ -15,6 +15,7 @@ import {
   ExternalLink,
   FolderOpen,
   GripVertical,
+  ListPlus,
 } from "lucide-react";
 
 // eip_handover_item、eip_leave_handover_item 與 eip_quick_report.deputy_id
@@ -48,6 +49,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { humanizeError } from "@/lib/eip-error";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 // 日期顯示與起訖工具共用同一支（見 lib/eip-datetime-range.ts）
 import { fmtDate } from "@/lib/eip-datetime-range";
 
@@ -837,6 +846,33 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
     return true;
   };
 
+  /**
+   * 一次新增多筆代辦（「帶入例行工作」用）。
+   * 跟 addItem 一樣掛主段、sort_order 接在整段最後面；一次 insert 多列，
+   * 代理人只會收到一則通知（eip_emit_notification 20 小時內同內容去重）。
+   */
+  const addItems = async (g: LeaveGroup, titles: string[], assigneeId: string | null) => {
+    if (!titles.length) return false;
+    const existing = orderedItems(g);
+    const base = existing.reduce((m, x) => Math.max(m, x.sort_order ?? 0), 0);
+    const { error } = await supabase.from("eip_leave_handover_item").insert(
+      titles.map((title, i) => ({
+        quick_report_id: g.primary.id,
+        title,
+        assignee_id: assigneeId,
+        url: null,
+        sort_order: base + i + 1,
+      })),
+    );
+    if (error) {
+      toast.error(humanizeError(error, "帶入例行工作"));
+      return false;
+    }
+    toast.success(`已帶入 ${titles.length} 項例行工作`);
+    refresh();
+    return true;
+  };
+
   /** 修改代辦（標題／指派／連結）。已完成的項目不會走到這裡 */
   const saveItem = async (
     item: LeaveItem,
@@ -1266,11 +1302,21 @@ function MyLeaveHandoverSection({ meId }: { meId: string }) {
                   )}
 
                   {!closed && !itemsQ.isError && (
-                    <AddLeaveItemRow
-                      users={others}
-                      deputyId={deputyId}
-                      onAdd={(input) => addItem(g, input)}
-                    />
+                    <>
+                      <AddLeaveItemRow
+                        users={others}
+                        deputyId={deputyId}
+                        onAdd={(input) => addItem(g, input)}
+                      />
+                      <ImportRoutineRow
+                        from={g.start}
+                        to={g.end}
+                        users={others}
+                        deputyId={deputyId}
+                        existingTitles={items.map((i) => i.title)}
+                        onImport={(titles, assigneeId) => addItems(g, titles, assigneeId)}
+                      />
+                    </>
                   )}
                 </div>
               );
@@ -1572,6 +1618,220 @@ function AddLeaveItemRow({
         <Plus className="w-3.5 h-3.5 mr-1" />
         {busy ? "新增中…" : "新增"}
       </Button>
+    </div>
+  );
+}
+
+/* ---------------- 帶入例行工作（2026-10-05 客戶需求） ----------------
+ * 來源：自己的個人例行範本＋自己是負責人的常態工作，只列請假期間會到期的（RPC 依週期判斷，
+ * 跟工作日誌帶入用同一套到期規則）。一個例行帶成一筆代辦，標題附上週期與期間內的日期。
+ * 是否帶入、帶哪些，由同事自己勾選。
+ */
+type RoutineCandidate = {
+  source: "personal_routine" | "recurring";
+  ref_id: string;
+  title: string;
+  freq_label: string | null;
+  slot: string | null;
+  dates: string[];
+  ord: number;
+};
+
+const ROUTINE_PREFIX = "【例行】";
+const mdOf = (d: string) => {
+  const [, m, dd] = d.split("-");
+  return `${Number(m)}/${Number(dd)}`;
+};
+/** 期間內到期日的簡短寫法：連續→「10/6~10/10」；少量→逐日列出；多且不連續→「首~尾 共 N 天」 */
+function summarizeDates(dates: string[]): string {
+  if (dates.length === 0) return "";
+  if (dates.length === 1) return mdOf(dates[0]);
+  const consecutive = dates.every(
+    (d, i) => i === 0 || (Date.parse(d) - Date.parse(dates[i - 1])) / 86400000 === 1,
+  );
+  if (consecutive) return `${mdOf(dates[0])}~${mdOf(dates[dates.length - 1])}`;
+  if (dates.length <= 4) return dates.map(mdOf).join("、");
+  return `${mdOf(dates[0])}~${mdOf(dates[dates.length - 1])} 共 ${dates.length} 天`;
+}
+const routineItemTitle = (c: RoutineCandidate) =>
+  `${ROUTINE_PREFIX}${c.title}（${[c.freq_label, summarizeDates(c.dates)].filter(Boolean).join("｜")}）`;
+/** 已帶入判斷：同一個例行名稱帶過就算（日期可能因為改假單而不同，不重複帶） */
+const alreadyImported = (c: RoutineCandidate, existing: string[]) =>
+  existing.some((t) => t.startsWith(`${ROUTINE_PREFIX}${c.title}（`));
+const SLOT_LABEL: Record<string, string> = { morning: "上午", afternoon: "下午", allday: "全天" };
+
+function ImportRoutineRow({
+  from,
+  to,
+  users,
+  deputyId,
+  existingTitles,
+  onImport,
+}: {
+  from: string;
+  to: string;
+  users: UserOpt[];
+  deputyId: string | null;
+  existingTitles: string[];
+  onImport: (titles: string[], assigneeId: string | null) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [assignee, setAssignee] = useState(NO_ASSIGNEE);
+  const [busy, setBusy] = useState(false);
+
+  const q = useQuery({
+    queryKey: ["eip", "leave-routine-candidates", from, to],
+    enabled: open && !!from && !!to,
+    queryFn: async (): Promise<RoutineCandidate[]> => {
+      const { data, error } = await supabase.rpc("eip_leave_routine_candidates", {
+        p_from: from,
+        p_to: to,
+      });
+      if (error) throw error;
+      return ((data ?? []) as RoutineCandidate[])
+        .slice()
+        .sort((a, b) => a.ord - b.ord || a.title.localeCompare(b.title, "zh-Hant"));
+    },
+  });
+  const list = q.data ?? [];
+  const keyOf = (c: RoutineCandidate) => `${c.source}:${c.ref_id}`;
+  const selectable = list.filter((c) => !alreadyImported(c, existingTitles));
+  const groups: { label: string; rows: RoutineCandidate[] }[] = [
+    { label: "個人例行", rows: list.filter((c) => c.source === "personal_routine") },
+    { label: "常態工作（我是負責人）", rows: list.filter((c) => c.source === "recurring") },
+  ].filter((x) => x.rows.length > 0);
+
+  const toggle = (k: string, v: boolean) =>
+    setPicked((s) => {
+      const n = new Set(s);
+      if (v) n.add(k);
+      else n.delete(k);
+      return n;
+    });
+  const allPicked = selectable.length > 0 && selectable.every((c) => picked.has(keyOf(c)));
+
+  const close = () => {
+    setOpen(false);
+    setPicked(new Set());
+    setAssignee(NO_ASSIGNEE);
+  };
+  const submit = async () => {
+    if (busy) return;
+    const chosen = list.filter((c) => picked.has(keyOf(c)) && !alreadyImported(c, existingTitles));
+    if (!chosen.length) return;
+    setBusy(true);
+    const ok = await onImport(
+      chosen.map(routineItemTitle),
+      assignee === NO_ASSIGNEE ? deputyId : assignee,
+    );
+    setBusy(false);
+    if (ok) close();
+  };
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 border-t bg-muted/10">
+      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setOpen(true)}>
+        <ListPlus className="w-3.5 h-3.5 mr-1" />
+        帶入例行工作
+      </Button>
+      <span className="text-[12px] text-muted-foreground">
+        從個人例行與常態工作挑選請假期間會到期的項目，帶成代辦
+      </span>
+
+      <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : !busy && close())}>
+        <DialogContent className="max-w-xl" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>帶入例行工作（{mdOf(from)}{from !== to ? ` ～ ${mdOf(to)}` : ""}）</DialogTitle>
+          </DialogHeader>
+          {q.isLoading ? (
+            <div className="py-6 text-center text-sm text-muted-foreground">載入中…</div>
+          ) : q.isError ? (
+            <div className="py-4 text-sm text-destructive">
+              載入失敗：{humanizeError(q.error, "載入例行工作")}
+            </div>
+          ) : list.length === 0 ? (
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              請假期間沒有會到期的個人例行或常態工作。
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>勾選要交接的項目（每個例行帶成一筆代辦）</span>
+                {selectable.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-primary hover:underline"
+                    onClick={() =>
+                      setPicked(allPicked ? new Set() : new Set(selectable.map(keyOf)))
+                    }
+                  >
+                    {allPicked ? "全部取消" : "全選"}
+                  </button>
+                )}
+              </div>
+              {groups.map((grp) => (
+                <div key={grp.label} className="space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">{grp.label}</div>
+                  {grp.rows.map((c) => {
+                    const k = keyOf(c);
+                    const done = alreadyImported(c, existingTitles);
+                    return (
+                      <label
+                        key={k}
+                        className={`flex items-start gap-2 rounded-md border px-2.5 py-2 ${
+                          done ? "opacity-60" : "cursor-pointer hover:bg-muted/40"
+                        }`}
+                      >
+                        <Checkbox
+                          className="mt-0.5"
+                          checked={done || picked.has(k)}
+                          disabled={done || busy}
+                          onCheckedChange={(v) => toggle(k, !!v)}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm break-words">{c.title}</div>
+                          <div className="text-[12px] text-muted-foreground">
+                            {[c.freq_label, c.slot ? SLOT_LABEL[c.slot] : null]
+                              .filter(Boolean)
+                              .join("・")}
+                            {" ｜ 期間內："}
+                            {summarizeDates(c.dates)}
+                            {done && "（已帶入）"}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter className="flex-wrap gap-2 sm:justify-between">
+            <Select value={assignee} onValueChange={setAssignee}>
+              <SelectTrigger className="w-40 h-9 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_ASSIGNEE}>{deputyId ? "指派：同代理人" : "未指派"}</SelectItem>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    指派：{u.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={close} disabled={busy}>
+                取消
+              </Button>
+              <Button onClick={() => void submit()} disabled={busy || picked.size === 0}>
+                {busy ? "帶入中…" : `帶入 ${picked.size} 項`}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
