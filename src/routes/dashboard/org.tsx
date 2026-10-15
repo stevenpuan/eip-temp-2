@@ -1172,7 +1172,7 @@ function AddMemberDialog({
           <div className="flex items-center justify-between rounded-md border p-3">
             <div>
               <div className="text-sm font-medium">同時建立登入帳號</div>
-              <div className="text-xs text-muted-foreground">email = 員工編號@shfc.com.tw,初始密碼為員工編號</div>
+              <div className="text-xs text-muted-foreground">email = 員工編號@eip-template.local,初始密碼為員工編號</div>
             </div>
             <Switch checked={withLogin} onCheckedChange={setWithLogin} />
           </div>

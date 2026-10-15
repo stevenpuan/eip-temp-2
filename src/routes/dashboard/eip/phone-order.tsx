@@ -386,7 +386,7 @@ function PhoneOrderPage() {
           dayCols.map((d) => { const c = cells.get(d); return c ? (pick(c) ?? "") : ""; });
 
         const aoa: unknown[][] = [];
-        aoa.push([`${rocYear}年 陞煇食品股份有限公司 電話訂單 ${month}月 紀錄表`]);
+        aoa.push([`${rocYear}年 艾士實業有限公司 電話訂單 ${month}月 紀錄表`]);
         aoa.push([`姓名：${p.user_name ?? ""}`, `部門：${p.department_name ?? ""}`]);
         aoa.push(["日", ...dayCols]);
         aoa.push(["電話接單數量", ...rowValue((c) => c.order_count)]);

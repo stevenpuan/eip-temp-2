@@ -27,7 +27,7 @@ export type AnomalyPrintData = {
   raisedByName: string;
 };
 
-const COMPANY_NAME = "陞煇食品股份有限公司";
+const COMPANY_NAME = "艾士實業有限公司";
 const FORM_TITLE = "每日訂單疏失表";
 const PROCESS_HEADING = "強化訂單、預防疏失基本流程";
 const PROCESS_STEPS: { text: string; underline?: string }[] = [
