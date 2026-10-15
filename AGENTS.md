@@ -1,4 +1,4 @@
-# 陞煇食品 EIP — 開發約定（給 AI 代理與工程師）
+# 艾士實業 EIP — 開發約定（給 AI 代理與工程師）
 
 本專案為內部管理系統，前端 TanStack Router + React Query + Supabase，後端全表啟用 RLS。
 以下是反覆踩過的地雷，請務必遵守。
