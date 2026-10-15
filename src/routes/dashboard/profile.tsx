@@ -178,7 +178,7 @@ function LineBindingCard({ userId }: { userId: string }) {
                   </Button>
                 </div>
                 <ol className="text-sm space-y-2 list-decimal list-inside text-foreground">
-                  <li>用手機 LINE 加「陞煇 EIP」官方帳號為好友。<span className="text-muted-foreground">（之後會提供加好友 QR code / 連結）</span></li>
+                  <li>用手機 LINE 加「艾士 EIP」官方帳號為好友。<span className="text-muted-foreground">（之後會提供加好友 QR code / 連結）</span></li>
                   <li>在該聊天室輸入這組綁定碼。</li>
                   <li>收到「綁定成功」即完成,之後重要提醒（到期、被指派、臨時回報）會推送到你的 LINE。</li>
                 </ol>

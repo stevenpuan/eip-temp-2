@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { logActivity } from "@/lib/logging";
 import { humanizeError } from "@/lib/eip-error";
 
-const LOGIN_DOMAIN = "shfc.com.tw";
+const LOGIN_DOMAIN = "eip-template.local"; // 需與 app_config.login_domain 一致
 
 function toLoginEmail(input: string) {
   const v = input.trim();
@@ -114,8 +114,8 @@ function LoginPage() {
     <div className="min-h-screen grid place-items-center bg-muted/30 px-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <img src="/logo.png" alt="陞煇食品" className="mx-auto h-16 w-16 object-contain mb-2" />
-          <CardTitle className="text-xl">陞煇食品</CardTitle>
+          <img src="/logo.svg" alt="艾士實業" className="mx-auto h-16 w-16 object-contain mb-2" />
+          <CardTitle className="text-xl">艾士實業</CardTitle>
           <CardDescription>內部管理平台</CardDescription>
         </CardHeader>
         <CardContent>
