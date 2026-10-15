@@ -294,7 +294,9 @@ function RecurringPage() {
   const runNow = async () => {
     if (running) return;
     setRunning(true);
-    const { error } = await supabase.rpc("eip_run_recurring", {});
+    const { error } = await supabase.rpc("eip_run_recurring", {
+      p_date: taipeiToday(),
+    });
     setRunning(false);
     if (error) toast.error(humanizeError(error, "立即執行"));
     else {
