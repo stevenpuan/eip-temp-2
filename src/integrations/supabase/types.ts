@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.18"
   }
   public: {
     Tables: {
@@ -248,11 +248,11 @@ export type Database = {
           email: string | null
           employee_no: string | null
           extension: string | null
+          hide_from_pickers: boolean
           hire_date: string | null
           id: string
           job_title: string | null
           line_user_id: string | null
-          hide_from_pickers: boolean
           must_change_password: boolean
           name: string
           role: Database["public"]["Enums"]["user_role"]
@@ -267,11 +267,11 @@ export type Database = {
           email?: string | null
           employee_no?: string | null
           extension?: string | null
+          hide_from_pickers?: boolean
           hire_date?: string | null
           id: string
           job_title?: string | null
           line_user_id?: string | null
-          hide_from_pickers?: boolean
           must_change_password?: boolean
           name: string
           role?: Database["public"]["Enums"]["user_role"]
@@ -286,11 +286,11 @@ export type Database = {
           email?: string | null
           employee_no?: string | null
           extension?: string | null
+          hide_from_pickers?: boolean
           hire_date?: string | null
           id?: string
           job_title?: string | null
           line_user_id?: string | null
-          hide_from_pickers?: boolean
           must_change_password?: boolean
           name?: string
           role?: Database["public"]["Enums"]["user_role"]
@@ -5126,6 +5126,7 @@ export type Database = {
           voided: number
         }[]
       }
+      eip_auto_close_empty_leaves: { Args: never; Returns: number }
       eip_build_handover: { Args: { p_leaver: string }; Returns: number }
       eip_can_edit_project: { Args: { p_project_id: string }; Returns: boolean }
       eip_can_edit_task_checklist: {
@@ -5141,6 +5142,10 @@ export type Database = {
       eip_can_see_task: { Args: { p_task_id: string }; Returns: boolean }
       eip_can_view_dept_record: { Args: { p_dept: string }; Returns: boolean }
       eip_can_view_dept_shared: { Args: { p_dept: string }; Returns: boolean }
+      eip_close_empty_leave_siblings: {
+        Args: { p_by: string; p_report_id: string }
+        Returns: number
+      }
       eip_close_leave_handover: { Args: { p_report_id: string }; Returns: Json }
       eip_complete_password_change: { Args: never; Returns: undefined }
       eip_confirm_line_delivery: { Args: never; Returns: number }
@@ -5271,6 +5276,23 @@ export type Database = {
           user_name: string
         }[]
       }
+      eip_leave_routine_candidates: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          dates: string[]
+          freq_label: string
+          ord: number
+          ref_id: string
+          slot: string
+          source: string
+          title: string
+        }[]
+      }
+      eip_leave_same_span: {
+        Args: { a_end: string; b_start: string }
+        Returns: boolean
+      }
+      eip_leave_span_ids: { Args: { p_report_id: string }; Returns: string[] }
       eip_line_push_now: {
         Args: { p_message: string; p_user_id: string }
         Returns: number
