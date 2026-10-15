@@ -537,6 +537,18 @@ function RuleDialog({
 
   const submit = async () => {
     if (!title.trim()) return toast.error("請輸入標題");
+    // 回報值以欄位名稱當 key 存進 task.report_data，沒名字或同名的欄位在任務端填不到
+    // （沒名字的會被略過、同名的會互相覆蓋），所以存檔前擋下來（2026-10-15 客戶回報）
+    const blankIdx = fields.findIndex((f) => !f.label?.trim());
+    if (blankIdx >= 0) {
+      return toast.error(`第 ${blankIdx + 1} 個回報欄位沒有名稱，請填寫名稱或刪除該欄位`);
+    }
+    const seen = new Set<string>();
+    for (const f of fields) {
+      const k = f.label.trim();
+      if (seen.has(k)) return toast.error(`回報欄位名稱「${k}」重複，請改成不同名稱`);
+      seen.add(k);
+    }
     setBusy(true);
     try {
       const parseList = (s: string): number[] =>
