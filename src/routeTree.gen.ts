@@ -47,6 +47,7 @@ import { Route as DashboardEipHandoverRouteImport } from './routes/dashboard/eip
 import { Route as DashboardEipMeetingsRouteImport } from './routes/dashboard/eip/meetings'
 import { Route as DashboardEipMembersRouteImport } from './routes/dashboard/eip/members'
 import { Route as DashboardEipMyTasksRouteImport } from './routes/dashboard/eip/my-tasks'
+import { Route as DashboardEipOrderMasterRouteImport } from './routes/dashboard/eip/order-master'
 import { Route as DashboardEipPerformanceRouteImport } from './routes/dashboard/eip/performance'
 import { Route as DashboardEipPersonalRoutineRouteImport } from './routes/dashboard/eip/personal-routine'
 import { Route as DashboardEipPhoneOrderRouteImport } from './routes/dashboard/eip/phone-order'
@@ -54,6 +55,7 @@ import { Route as DashboardEipProjectsRouteImport } from './routes/dashboard/eip
 import { Route as DashboardEipQuickReportsRouteImport } from './routes/dashboard/eip/quick-reports'
 import { Route as DashboardEipRecurringRouteImport } from './routes/dashboard/eip/recurring'
 import { Route as DashboardEipReportsRouteImport } from './routes/dashboard/eip/reports'
+import { Route as DashboardEipSalesOrdersRouteImport } from './routes/dashboard/eip/sales-orders'
 import { Route as DashboardEipTasksRouteImport } from './routes/dashboard/eip/tasks'
 import { Route as DashboardEipWorkLogRouteImport } from './routes/dashboard/eip/work-log'
 import { Route as DashboardEipFeatureRequestsIndexRouteImport } from './routes/dashboard/eip/feature-requests.index'
@@ -261,6 +263,11 @@ const DashboardEipMyTasksRoute = DashboardEipMyTasksRouteImport.update({
   path: '/my-tasks',
   getParentRoute: () => DashboardEipRoute,
 } as any)
+const DashboardEipOrderMasterRoute = DashboardEipOrderMasterRouteImport.update({
+  id: '/order-master',
+  path: '/order-master',
+  getParentRoute: () => DashboardEipRoute,
+} as any)
 const DashboardEipPerformanceRoute = DashboardEipPerformanceRouteImport.update({
   id: '/performance',
   path: '/performance',
@@ -296,6 +303,11 @@ const DashboardEipRecurringRoute = DashboardEipRecurringRouteImport.update({
 const DashboardEipReportsRoute = DashboardEipReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => DashboardEipRoute,
+} as any)
+const DashboardEipSalesOrdersRoute = DashboardEipSalesOrdersRouteImport.update({
+  id: '/sales-orders',
+  path: '/sales-orders',
   getParentRoute: () => DashboardEipRoute,
 } as any)
 const DashboardEipTasksRoute = DashboardEipTasksRouteImport.update({
@@ -394,6 +406,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/eip/meetings': typeof DashboardEipMeetingsRouteWithChildren
   '/dashboard/eip/members': typeof DashboardEipMembersRoute
   '/dashboard/eip/my-tasks': typeof DashboardEipMyTasksRoute
+  '/dashboard/eip/order-master': typeof DashboardEipOrderMasterRoute
   '/dashboard/eip/performance': typeof DashboardEipPerformanceRoute
   '/dashboard/eip/personal-routine': typeof DashboardEipPersonalRoutineRoute
   '/dashboard/eip/phone-order': typeof DashboardEipPhoneOrderRoute
@@ -401,6 +414,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/eip/quick-reports': typeof DashboardEipQuickReportsRoute
   '/dashboard/eip/recurring': typeof DashboardEipRecurringRoute
   '/dashboard/eip/reports': typeof DashboardEipReportsRoute
+  '/dashboard/eip/sales-orders': typeof DashboardEipSalesOrdersRoute
   '/dashboard/eip/tasks': typeof DashboardEipTasksRoute
   '/dashboard/eip/work-log': typeof DashboardEipWorkLogRoute
   '/dashboard/eip/feature-requests/$id': typeof DashboardEipFeatureRequestsIdRouteWithChildren
@@ -448,12 +462,14 @@ export interface FileRoutesByTo {
   '/dashboard/eip/handover': typeof DashboardEipHandoverRoute
   '/dashboard/eip/members': typeof DashboardEipMembersRoute
   '/dashboard/eip/my-tasks': typeof DashboardEipMyTasksRoute
+  '/dashboard/eip/order-master': typeof DashboardEipOrderMasterRoute
   '/dashboard/eip/performance': typeof DashboardEipPerformanceRoute
   '/dashboard/eip/personal-routine': typeof DashboardEipPersonalRoutineRoute
   '/dashboard/eip/phone-order': typeof DashboardEipPhoneOrderRoute
   '/dashboard/eip/quick-reports': typeof DashboardEipQuickReportsRoute
   '/dashboard/eip/recurring': typeof DashboardEipRecurringRoute
   '/dashboard/eip/reports': typeof DashboardEipReportsRoute
+  '/dashboard/eip/sales-orders': typeof DashboardEipSalesOrdersRoute
   '/dashboard/eip/tasks': typeof DashboardEipTasksRoute
   '/dashboard/eip/work-log': typeof DashboardEipWorkLogRoute
   '/dashboard/eip/feature-requests/$id': typeof DashboardEipFeatureRequestsIdRouteWithChildren
@@ -505,6 +521,7 @@ export interface FileRoutesById {
   '/dashboard/eip/meetings': typeof DashboardEipMeetingsRouteWithChildren
   '/dashboard/eip/members': typeof DashboardEipMembersRoute
   '/dashboard/eip/my-tasks': typeof DashboardEipMyTasksRoute
+  '/dashboard/eip/order-master': typeof DashboardEipOrderMasterRoute
   '/dashboard/eip/performance': typeof DashboardEipPerformanceRoute
   '/dashboard/eip/personal-routine': typeof DashboardEipPersonalRoutineRoute
   '/dashboard/eip/phone-order': typeof DashboardEipPhoneOrderRoute
@@ -512,6 +529,7 @@ export interface FileRoutesById {
   '/dashboard/eip/quick-reports': typeof DashboardEipQuickReportsRoute
   '/dashboard/eip/recurring': typeof DashboardEipRecurringRoute
   '/dashboard/eip/reports': typeof DashboardEipReportsRoute
+  '/dashboard/eip/sales-orders': typeof DashboardEipSalesOrdersRoute
   '/dashboard/eip/tasks': typeof DashboardEipTasksRoute
   '/dashboard/eip/work-log': typeof DashboardEipWorkLogRoute
   '/dashboard/eip/feature-requests/$id': typeof DashboardEipFeatureRequestsIdRouteWithChildren
@@ -564,6 +582,7 @@ export interface FileRouteTypes {
     | '/dashboard/eip/meetings'
     | '/dashboard/eip/members'
     | '/dashboard/eip/my-tasks'
+    | '/dashboard/eip/order-master'
     | '/dashboard/eip/performance'
     | '/dashboard/eip/personal-routine'
     | '/dashboard/eip/phone-order'
@@ -571,6 +590,7 @@ export interface FileRouteTypes {
     | '/dashboard/eip/quick-reports'
     | '/dashboard/eip/recurring'
     | '/dashboard/eip/reports'
+    | '/dashboard/eip/sales-orders'
     | '/dashboard/eip/tasks'
     | '/dashboard/eip/work-log'
     | '/dashboard/eip/feature-requests/$id'
@@ -618,12 +638,14 @@ export interface FileRouteTypes {
     | '/dashboard/eip/handover'
     | '/dashboard/eip/members'
     | '/dashboard/eip/my-tasks'
+    | '/dashboard/eip/order-master'
     | '/dashboard/eip/performance'
     | '/dashboard/eip/personal-routine'
     | '/dashboard/eip/phone-order'
     | '/dashboard/eip/quick-reports'
     | '/dashboard/eip/recurring'
     | '/dashboard/eip/reports'
+    | '/dashboard/eip/sales-orders'
     | '/dashboard/eip/tasks'
     | '/dashboard/eip/work-log'
     | '/dashboard/eip/feature-requests/$id'
@@ -674,6 +696,7 @@ export interface FileRouteTypes {
     | '/dashboard/eip/meetings'
     | '/dashboard/eip/members'
     | '/dashboard/eip/my-tasks'
+    | '/dashboard/eip/order-master'
     | '/dashboard/eip/performance'
     | '/dashboard/eip/personal-routine'
     | '/dashboard/eip/phone-order'
@@ -681,6 +704,7 @@ export interface FileRouteTypes {
     | '/dashboard/eip/quick-reports'
     | '/dashboard/eip/recurring'
     | '/dashboard/eip/reports'
+    | '/dashboard/eip/sales-orders'
     | '/dashboard/eip/tasks'
     | '/dashboard/eip/work-log'
     | '/dashboard/eip/feature-requests/$id'
@@ -967,6 +991,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardEipMyTasksRouteImport
       parentRoute: typeof DashboardEipRoute
     }
+    '/dashboard/eip/order-master': {
+      id: '/dashboard/eip/order-master'
+      path: '/order-master'
+      fullPath: '/dashboard/eip/order-master'
+      preLoaderRoute: typeof DashboardEipOrderMasterRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
     '/dashboard/eip/performance': {
       id: '/dashboard/eip/performance'
       path: '/performance'
@@ -1014,6 +1045,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/dashboard/eip/reports'
       preLoaderRoute: typeof DashboardEipReportsRouteImport
+      parentRoute: typeof DashboardEipRoute
+    }
+    '/dashboard/eip/sales-orders': {
+      id: '/dashboard/eip/sales-orders'
+      path: '/sales-orders'
+      fullPath: '/dashboard/eip/sales-orders'
+      preLoaderRoute: typeof DashboardEipSalesOrdersRouteImport
       parentRoute: typeof DashboardEipRoute
     }
     '/dashboard/eip/tasks': {
@@ -1164,6 +1202,7 @@ interface DashboardEipRouteChildren {
   DashboardEipMeetingsRoute: typeof DashboardEipMeetingsRouteWithChildren
   DashboardEipMembersRoute: typeof DashboardEipMembersRoute
   DashboardEipMyTasksRoute: typeof DashboardEipMyTasksRoute
+  DashboardEipOrderMasterRoute: typeof DashboardEipOrderMasterRoute
   DashboardEipPerformanceRoute: typeof DashboardEipPerformanceRoute
   DashboardEipPersonalRoutineRoute: typeof DashboardEipPersonalRoutineRoute
   DashboardEipPhoneOrderRoute: typeof DashboardEipPhoneOrderRoute
@@ -1171,6 +1210,7 @@ interface DashboardEipRouteChildren {
   DashboardEipQuickReportsRoute: typeof DashboardEipQuickReportsRoute
   DashboardEipRecurringRoute: typeof DashboardEipRecurringRoute
   DashboardEipReportsRoute: typeof DashboardEipReportsRoute
+  DashboardEipSalesOrdersRoute: typeof DashboardEipSalesOrdersRoute
   DashboardEipTasksRoute: typeof DashboardEipTasksRoute
   DashboardEipWorkLogRoute: typeof DashboardEipWorkLogRoute
 }
@@ -1190,6 +1230,7 @@ const DashboardEipRouteChildren: DashboardEipRouteChildren = {
   DashboardEipMeetingsRoute: DashboardEipMeetingsRouteWithChildren,
   DashboardEipMembersRoute: DashboardEipMembersRoute,
   DashboardEipMyTasksRoute: DashboardEipMyTasksRoute,
+  DashboardEipOrderMasterRoute: DashboardEipOrderMasterRoute,
   DashboardEipPerformanceRoute: DashboardEipPerformanceRoute,
   DashboardEipPersonalRoutineRoute: DashboardEipPersonalRoutineRoute,
   DashboardEipPhoneOrderRoute: DashboardEipPhoneOrderRoute,
@@ -1197,6 +1238,7 @@ const DashboardEipRouteChildren: DashboardEipRouteChildren = {
   DashboardEipQuickReportsRoute: DashboardEipQuickReportsRoute,
   DashboardEipRecurringRoute: DashboardEipRecurringRoute,
   DashboardEipReportsRoute: DashboardEipReportsRoute,
+  DashboardEipSalesOrdersRoute: DashboardEipSalesOrdersRoute,
   DashboardEipTasksRoute: DashboardEipTasksRoute,
   DashboardEipWorkLogRoute: DashboardEipWorkLogRoute,
 }

@@ -1026,6 +1026,408 @@ export type Database = {
           },
         ]
       }
+      eip_customer: {
+        Row: {
+          address: string | null
+          aliases: string[]
+          code: string | null
+          contact_name: string | null
+          created_at: string
+          created_by: string | null
+          credit_limit: number | null
+          customer_type: string | null
+          delivery_lead_days: number | null
+          delivery_note: string | null
+          delivery_route: string | null
+          delivery_time_window: string | null
+          email: string | null
+          fax: string | null
+          id: string
+          invoice_address: string | null
+          invoice_title: string | null
+          is_active: boolean
+          name: string
+          note: string | null
+          payment_terms: string | null
+          phone: string | null
+          region: string | null
+          sales_owner_id: string | null
+          short_name: string | null
+          tax_id: string | null
+          tax_type: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          aliases?: string[]
+          code?: string | null
+          contact_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          credit_limit?: number | null
+          customer_type?: string | null
+          delivery_lead_days?: number | null
+          delivery_note?: string | null
+          delivery_route?: string | null
+          delivery_time_window?: string | null
+          email?: string | null
+          fax?: string | null
+          id?: string
+          invoice_address?: string | null
+          invoice_title?: string | null
+          is_active?: boolean
+          name: string
+          note?: string | null
+          payment_terms?: string | null
+          phone?: string | null
+          region?: string | null
+          sales_owner_id?: string | null
+          short_name?: string | null
+          tax_id?: string | null
+          tax_type?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          aliases?: string[]
+          code?: string | null
+          contact_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          credit_limit?: number | null
+          customer_type?: string | null
+          delivery_lead_days?: number | null
+          delivery_note?: string | null
+          delivery_route?: string | null
+          delivery_time_window?: string | null
+          email?: string | null
+          fax?: string | null
+          id?: string
+          invoice_address?: string | null
+          invoice_title?: string | null
+          is_active?: boolean
+          name?: string
+          note?: string | null
+          payment_terms?: string | null
+          phone?: string | null
+          region?: string | null
+          sales_owner_id?: string | null
+          short_name?: string | null
+          tax_id?: string | null
+          tax_type?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_customer_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_customer_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "eip_customer_sales_owner_id_fkey"
+            columns: ["sales_owner_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_customer_sales_owner_id_fkey"
+            columns: ["sales_owner_id"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      eip_customer_address: {
+        Row: {
+          address: string
+          created_at: string
+          customer_id: string
+          delivery_time_window: string | null
+          id: string
+          is_active: boolean
+          is_default: boolean
+          label: string
+          note: string | null
+          receiver_name: string | null
+          receiver_phone: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          address: string
+          created_at?: string
+          customer_id: string
+          delivery_time_window?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          label: string
+          note?: string | null
+          receiver_name?: string | null
+          receiver_phone?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string
+          created_at?: string
+          customer_id?: string
+          delivery_time_window?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          label?: string
+          note?: string | null
+          receiver_name?: string | null
+          receiver_phone?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_customer_address_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "eip_customer"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eip_customer_price: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          last_order_id: string | null
+          note: string | null
+          product_id: string
+          source: string
+          tenant_id: string
+          unit: string | null
+          unit_price: number
+          updated_at: string
+          updated_by: string | null
+          valid_from: string | null
+          valid_to: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id?: string
+          last_order_id?: string | null
+          note?: string | null
+          product_id: string
+          source?: string
+          tenant_id?: string
+          unit?: string | null
+          unit_price: number
+          updated_at?: string
+          updated_by?: string | null
+          valid_from?: string | null
+          valid_to?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          last_order_id?: string | null
+          note?: string | null
+          product_id?: string
+          source?: string
+          tenant_id?: string
+          unit?: string | null
+          unit_price?: number
+          updated_at?: string
+          updated_by?: string | null
+          valid_from?: string | null
+          valid_to?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_customer_price_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "eip_customer"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_customer_price_last_order_id_fkey"
+            columns: ["last_order_id"]
+            isOneToOne: false
+            referencedRelation: "eip_sales_order"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_customer_price_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "eip_product"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_customer_price_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_customer_price_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      eip_customer_product_alias: {
+        Row: {
+          alias: string
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          id: string
+          product_id: string
+          source: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          alias: string
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          id?: string
+          product_id: string
+          source?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          alias?: string
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          id?: string
+          product_id?: string
+          source?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_customer_product_alias_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_customer_product_alias_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "eip_customer_product_alias_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "eip_customer"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_customer_product_alias_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "eip_product"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eip_customer_product_profile: {
+        Row: {
+          avg_base_qty: number | null
+          base_unit: string | null
+          customer_id: string
+          id: string
+          is_hidden: boolean
+          last_date: string | null
+          last_price: number | null
+          last_qty: number | null
+          last_unit: string | null
+          max_base_qty: number | null
+          order_count: number
+          product_id: string
+          tenant_id: string
+          updated_at: string
+          usual_unit: string | null
+        }
+        Insert: {
+          avg_base_qty?: number | null
+          base_unit?: string | null
+          customer_id: string
+          id?: string
+          is_hidden?: boolean
+          last_date?: string | null
+          last_price?: number | null
+          last_qty?: number | null
+          last_unit?: string | null
+          max_base_qty?: number | null
+          order_count?: number
+          product_id: string
+          tenant_id?: string
+          updated_at?: string
+          usual_unit?: string | null
+        }
+        Update: {
+          avg_base_qty?: number | null
+          base_unit?: string | null
+          customer_id?: string
+          id?: string
+          is_hidden?: boolean
+          last_date?: string | null
+          last_price?: number | null
+          last_qty?: number | null
+          last_unit?: string | null
+          max_base_qty?: number | null
+          order_count?: number
+          product_id?: string
+          tenant_id?: string
+          updated_at?: string
+          usual_unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_customer_product_profile_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "eip_customer"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_customer_product_profile_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "eip_product"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       eip_deletion_policy: {
         Row: {
           created_at: string
@@ -1953,6 +2355,247 @@ export type Database = {
         }
         Relationships: []
       }
+      eip_order_example: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string | null
+          expected_text: string
+          id: string
+          input_text: string
+          is_active: boolean
+          message_date: string | null
+          order_id: string | null
+          source: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          expected_text: string
+          id?: string
+          input_text: string
+          is_active?: boolean
+          message_date?: string | null
+          order_id?: string | null
+          source?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          expected_text?: string
+          id?: string
+          input_text?: string
+          is_active?: boolean
+          message_date?: string | null
+          order_id?: string | null
+          source?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_order_example_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_order_example_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "eip_order_example_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "eip_customer"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_order_example_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "eip_sales_order"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eip_order_phrase: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          meaning: string
+          phrase: string
+          sort_order: number
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          meaning: string
+          phrase: string
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          meaning?: string
+          phrase?: string
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_order_phrase_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_order_phrase_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      eip_product: {
+        Row: {
+          aliases: string[]
+          barcode: string | null
+          category: string | null
+          code: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          min_order_qty: number | null
+          name: string
+          note: string | null
+          pack_desc: string | null
+          spec: string | null
+          tenant_id: string
+          unit: string | null
+          unit_price: number | null
+          updated_at: string
+        }
+        Insert: {
+          aliases?: string[]
+          barcode?: string | null
+          category?: string | null
+          code?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          min_order_qty?: number | null
+          name: string
+          note?: string | null
+          pack_desc?: string | null
+          spec?: string | null
+          tenant_id?: string
+          unit?: string | null
+          unit_price?: number | null
+          updated_at?: string
+        }
+        Update: {
+          aliases?: string[]
+          barcode?: string | null
+          category?: string | null
+          code?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          min_order_qty?: number | null
+          name?: string
+          note?: string | null
+          pack_desc?: string | null
+          spec?: string | null
+          tenant_id?: string
+          unit?: string | null
+          unit_price?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_product_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_product_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      eip_product_unit: {
+        Row: {
+          barcode: string | null
+          created_at: string
+          id: string
+          product_id: string
+          ratio: number
+          tenant_id: string
+          unit: string
+          unit_price: number | null
+        }
+        Insert: {
+          barcode?: string | null
+          created_at?: string
+          id?: string
+          product_id: string
+          ratio: number
+          tenant_id?: string
+          unit: string
+          unit_price?: number | null
+        }
+        Update: {
+          barcode?: string | null
+          created_at?: string
+          id?: string
+          product_id?: string
+          ratio?: number
+          tenant_id?: string
+          unit?: string
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_product_unit_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "eip_product"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       eip_purge_policy: {
         Row: {
           days: number
@@ -2160,6 +2803,424 @@ export type Database = {
           },
         ]
       }
+      eip_sales_history: {
+        Row: {
+          created_at: string
+          customer_id: string
+          doc_no: string | null
+          id: string
+          imported_by: string | null
+          product_id: string
+          qty: number
+          sale_date: string
+          tenant_id: string
+          unit: string | null
+          unit_price: number | null
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          doc_no?: string | null
+          id?: string
+          imported_by?: string | null
+          product_id: string
+          qty: number
+          sale_date: string
+          tenant_id?: string
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          doc_no?: string | null
+          id?: string
+          imported_by?: string | null
+          product_id?: string
+          qty?: number
+          sale_date?: string
+          tenant_id?: string
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_sales_history_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "eip_customer"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_sales_history_imported_by_fkey"
+            columns: ["imported_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_sales_history_imported_by_fkey"
+            columns: ["imported_by"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "eip_sales_history_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "eip_product"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eip_sales_order: {
+        Row: {
+          ai_issues: string[]
+          ai_summary: string | null
+          attachments: Json
+          cancelled_reason: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          created_by: string | null
+          customer_address_id: string | null
+          customer_id: string | null
+          customer_text: string | null
+          deleted_at: string | null
+          delivery_address: string | null
+          delivery_date: string | null
+          delivery_time_window: string | null
+          draft_escalated_at: string | null
+          draft_reminded_at: string | null
+          erp_order_no: string | null
+          id: string
+          note: string | null
+          order_date: string
+          order_no: string | null
+          owner_confirmed_at: string | null
+          payment_terms: string | null
+          raw_text: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source: string
+          status: string
+          subtotal: number
+          tax_amount: number
+          tax_rate: number | null
+          tax_type: string | null
+          tenant_id: string
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          ai_issues?: string[]
+          ai_summary?: string | null
+          attachments?: Json
+          cancelled_reason?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_address_id?: string | null
+          customer_id?: string | null
+          customer_text?: string | null
+          deleted_at?: string | null
+          delivery_address?: string | null
+          delivery_date?: string | null
+          delivery_time_window?: string | null
+          draft_escalated_at?: string | null
+          draft_reminded_at?: string | null
+          erp_order_no?: string | null
+          id?: string
+          note?: string | null
+          order_date?: string
+          order_no?: string | null
+          owner_confirmed_at?: string | null
+          payment_terms?: string | null
+          raw_text?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source?: string
+          status?: string
+          subtotal?: number
+          tax_amount?: number
+          tax_rate?: number | null
+          tax_type?: string | null
+          tenant_id?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          ai_issues?: string[]
+          ai_summary?: string | null
+          attachments?: Json
+          cancelled_reason?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_address_id?: string | null
+          customer_id?: string | null
+          customer_text?: string | null
+          deleted_at?: string | null
+          delivery_address?: string | null
+          delivery_date?: string | null
+          delivery_time_window?: string | null
+          draft_escalated_at?: string | null
+          draft_reminded_at?: string | null
+          erp_order_no?: string | null
+          id?: string
+          note?: string | null
+          order_date?: string
+          order_no?: string | null
+          owner_confirmed_at?: string | null
+          payment_terms?: string | null
+          raw_text?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source?: string
+          status?: string
+          subtotal?: number
+          tax_amount?: number
+          tax_rate?: number | null
+          tax_type?: string | null
+          tenant_id?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_sales_order_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_sales_order_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "eip_sales_order_customer_address_id_fkey"
+            columns: ["customer_address_id"]
+            isOneToOne: false
+            referencedRelation: "eip_customer_address"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_sales_order_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "eip_customer"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_sales_order_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_sales_order_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      eip_sales_order_line: {
+        Row: {
+          amount: number | null
+          created_at: string
+          id: string
+          line_no: number
+          needs_review: boolean
+          note: string | null
+          order_id: string
+          price_source: string | null
+          product_id: string | null
+          product_text: string | null
+          qty: number | null
+          spec: string | null
+          tenant_id: string
+          unit: string | null
+          unit_price: number | null
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string
+          id?: string
+          line_no?: number
+          needs_review?: boolean
+          note?: string | null
+          order_id: string
+          price_source?: string | null
+          product_id?: string | null
+          product_text?: string | null
+          qty?: number | null
+          spec?: string | null
+          tenant_id?: string
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string
+          id?: string
+          line_no?: number
+          needs_review?: boolean
+          note?: string | null
+          order_id?: string
+          price_source?: string | null
+          product_id?: string | null
+          product_text?: string | null
+          qty?: number | null
+          spec?: string | null
+          tenant_id?: string
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_sales_order_line_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "eip_sales_order"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_sales_order_line_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "eip_product"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eip_sales_order_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          detail: Json | null
+          id: number
+          order_id: string
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          detail?: Json | null
+          id?: number
+          order_id: string
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          detail?: Json | null
+          id?: number
+          order_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_sales_order_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_sales_order_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "eip_sales_order_log_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "eip_sales_order"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eip_sales_order_setting: {
+        Row: {
+          default_tax_type: string
+          draft_escalate_minutes: number
+          draft_remind_minutes: number
+          holidays: string[]
+          learn_examples: boolean
+          learn_last_price: boolean
+          no_delivery_weekdays: number[]
+          notify_creator: boolean
+          qty_alert_ratio: number
+          reviewer_ids: string[]
+          tax_rate: number
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          default_tax_type?: string
+          draft_escalate_minutes?: number
+          draft_remind_minutes?: number
+          holidays?: string[]
+          learn_examples?: boolean
+          learn_last_price?: boolean
+          no_delivery_weekdays?: number[]
+          notify_creator?: boolean
+          qty_alert_ratio?: number
+          reviewer_ids?: string[]
+          tax_rate?: number
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          default_tax_type?: string
+          draft_escalate_minutes?: number
+          draft_remind_minutes?: number
+          holidays?: string[]
+          learn_examples?: boolean
+          learn_last_price?: boolean
+          no_delivery_weekdays?: number[]
+          notify_creator?: boolean
+          qty_alert_ratio?: number
+          reviewer_ids?: string[]
+          tax_rate?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eip_sales_order_setting_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eip_sales_order_setting_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       eip_url_link: {
         Row: {
           created_at: string
@@ -2364,6 +3425,116 @@ export type Database = {
             foreignKeyName: "line_bind_code_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      line_inbound_message: {
+        Row: {
+          created_at: string
+          file_name: string | null
+          file_path: string | null
+          id: string
+          intent: string | null
+          line_message_id: string | null
+          message_type: string
+          mime_type: string | null
+          parse_result: Json | null
+          related_order_id: string | null
+          tenant_id: string
+          text_content: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          file_name?: string | null
+          file_path?: string | null
+          id?: string
+          intent?: string | null
+          line_message_id?: string | null
+          message_type: string
+          mime_type?: string | null
+          parse_result?: Json | null
+          related_order_id?: string | null
+          tenant_id: string
+          text_content?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          file_name?: string | null
+          file_path?: string | null
+          id?: string
+          intent?: string | null
+          line_message_id?: string | null
+          message_type?: string
+          mime_type?: string | null
+          parse_result?: Json | null
+          related_order_id?: string | null
+          tenant_id?: string
+          text_content?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "line_inbound_message_related_order_id_fkey"
+            columns: ["related_order_id"]
+            isOneToOne: false
+            referencedRelation: "eip_sales_order"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "line_inbound_message_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "line_inbound_message_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "eip_org_chart"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      line_pending_order: {
+        Row: {
+          created_at: string
+          order_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          order_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          order_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "line_pending_order_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "eip_sales_order"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "line_pending_order_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "line_pending_order_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
             referencedRelation: "eip_org_chart"
             referencedColumns: ["user_id"]
           },
@@ -5129,6 +6300,7 @@ export type Database = {
       eip_auto_close_empty_leaves: { Args: never; Returns: number }
       eip_build_handover: { Args: { p_leaver: string }; Returns: number }
       eip_can_edit_project: { Args: { p_project_id: string }; Returns: boolean }
+      eip_can_edit_sales_order: { Args: { p_order: string }; Returns: boolean }
       eip_can_edit_task_checklist: {
         Args: { p_task_id: string }
         Returns: boolean
@@ -5142,6 +6314,7 @@ export type Database = {
       eip_can_see_task: { Args: { p_task_id: string }; Returns: boolean }
       eip_can_view_dept_record: { Args: { p_dept: string }; Returns: boolean }
       eip_can_view_dept_shared: { Args: { p_dept: string }; Returns: boolean }
+      eip_can_view_sales_order: { Args: { p_order: string }; Returns: boolean }
       eip_close_empty_leave_siblings: {
         Args: { p_by: string; p_report_id: string }
         Returns: number
@@ -5245,6 +6418,7 @@ export type Database = {
         }
         Returns: number
       }
+      eip_finish_sales_history_import: { Args: never; Returns: Json }
       eip_generate_line_bind_code: { Args: never; Returns: string }
       eip_handover_assignee: {
         Args: { p_creator: string; p_dept: string; p_leaver: string }
@@ -5254,8 +6428,16 @@ export type Database = {
         Args: { p_action: string; p_module: string }
         Returns: boolean
       }
+      eip_import_sales_history: {
+        Args: { p_replace?: boolean; p_rows: Json }
+        Returns: Json
+      }
       eip_is_any_dept_supervisor: { Args: never; Returns: boolean }
       eip_is_dept_supervisor: { Args: { p_dept: string }; Returns: boolean }
+      eip_is_no_delivery_day: {
+        Args: { p_date: string; p_tenant: string }
+        Returns: boolean
+      }
       eip_is_phone_order_hr: { Args: never; Returns: boolean }
       eip_is_task_collaborator: {
         Args: { p_task_id: string }
@@ -5329,6 +6511,10 @@ export type Database = {
         }[]
       }
       eip_my_view_departments: { Args: never; Returns: string[] }
+      eip_next_delivery_day: {
+        Args: { p_date: string; p_tenant: string }
+        Returns: string
+      }
       eip_notification_entity_alive: {
         Args: {
           p_entity_id: string
@@ -5365,6 +6551,7 @@ export type Database = {
         Args: { p_date?: string; p_user_ids: string[] }
         Returns: number
       }
+      eip_order_example_text: { Args: { p_order: string }; Returns: string }
       eip_owns_personal_event: {
         Args: { p_event_id: string }
         Returns: boolean
@@ -5466,6 +6653,18 @@ export type Database = {
           work_days: number
         }[]
       }
+      eip_price_lookup: {
+        Args: {
+          p_customer: string
+          p_date?: string
+          p_product: string
+          p_unit: string
+        }
+        Returns: {
+          source: string
+          unit_price: number
+        }[]
+      }
       eip_priority_label: { Args: { p: string }; Returns: string }
       eip_purge_deleted: {
         Args: { p_id: string; p_module: string }
@@ -5476,6 +6675,12 @@ export type Database = {
         Returns: Json
       }
       eip_purge_old_logs: { Args: { p_days?: number }; Returns: string }
+      eip_rebuild_customer_profile: {
+        Args: { p_customer?: string; p_tenant: string }
+        Returns: number
+      }
+      eip_refresh_customer_profiles: { Args: never; Returns: number }
+      eip_remind_stale_order_drafts: { Args: never; Returns: number }
       eip_remove_routine_item: {
         Args: {
           p_date: string
@@ -5494,6 +6699,18 @@ export type Database = {
         Args: { p_ids: string[]; p_task_id: string }
         Returns: number
       }
+      eip_resolve_price: {
+        Args: {
+          p_customer: string
+          p_date?: string
+          p_product: string
+          p_unit: string
+        }
+        Returns: {
+          source: string
+          unit_price: number
+        }[]
+      }
       eip_restore_deleted: {
         Args: { p_id: string; p_module: string }
         Returns: undefined
@@ -5509,6 +6726,7 @@ export type Database = {
       eip_run_recurring:
         | { Args: never; Returns: undefined }
         | { Args: { p_date: string }; Returns: undefined }
+      eip_sales_order_learn: { Args: { p_order: string }; Returns: undefined }
       eip_send_line_digests: { Args: never; Returns: number }
       eip_set_routine_item: {
         Args: {
@@ -5559,6 +6777,10 @@ export type Database = {
         Returns: boolean
       }
       eip_user_can_scope_dept: { Args: { p_dept: string }; Returns: boolean }
+      eip_user_has_perm: {
+        Args: { p_action: string; p_module: string; p_user: string }
+        Returns: boolean
+      }
       eip_work_log_purge_guard: { Args: { p_id: string }; Returns: string }
       eip_worklog_file_access: {
         Args: { p_path: string; p_write: boolean }
@@ -5609,6 +6831,7 @@ export type Database = {
         | "handover"
         | "anomaly"
         | "leave_handover"
+        | "sales_order"
       notification_type:
         | "assigned"
         | "status_changed"
@@ -5791,6 +7014,7 @@ export const Constants = {
         "handover",
         "anomaly",
         "leave_handover",
+        "sales_order",
       ],
       notification_type: [
         "assigned",
