@@ -427,7 +427,9 @@ function CalendarPage() {
         note: peNote.trim() || null,
       } as any).eq("id", peEditing.id);
       if (error) { setPeSubmitting(false); toast.error(humanizeError(error, "儲存行程")); return; }
-      await supabase.from("personal_event_share").delete().eq("event_id", peEditing.id);
+      // 先清掉舊的分享對象再重建；失敗就停下來，避免顯示「已儲存」但被移除的人仍看得到（2026-10-17 總檢查）
+      const { error: shErr } = await supabase.from("personal_event_share").delete().eq("event_id", peEditing.id);
+      if (shErr) { setPeSubmitting(false); toast.error(humanizeError(shErr, "更新分享對象")); return; }
     } else {
       const { data, error } = await supabase.from("personal_event").insert({
         title: peTitle.trim(),
