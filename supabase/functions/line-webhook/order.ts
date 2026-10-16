@@ -23,7 +23,7 @@ type Addr = { id: string; label: string; address: string };
 type Cust = { id: string; code: string | null; name: string; short_name: string | null; aliases: string[] | null; address: string | null; delivery_lead_days: number | null; eip_customer_address?: Addr[] };
 type PUnit = { unit: string; ratio: number };
 type Prod = { id: string; code: string | null; name: string; spec: string | null; unit: string | null; aliases: string[] | null; unit_price: number | null; min_order_qty: number | null; eip_product_unit?: PUnit[] };
-type Catalog = { customers: Cust[]; products: Prod[] };
+export type Catalog = { customers: Cust[]; products: Prod[] };
 
 // ───────────────────────── 工具 ─────────────────────────
 
@@ -34,7 +34,32 @@ export function taipeiToday(): { date: string; weekday: string } {
   return { date, weekday };
 }
 
-function norm(s: string | null | undefined): string {
+const WDAY = ["日", "一", "二", "三", "四", "五", "六"];
+export const weekdayOf = (d: string) => WDAY[new Date(d + "T00:00:00Z").getUTCDay()];
+export const addDays = (d: string, n: number) => {
+  const x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + n);
+  return x.toISOString().slice(0, 10);
+};
+const dayLabel = (d: string) => `${d}（${weekdayOf(d)}）`;
+/** 台北時間的日期對照表，放進系統提示，讓 AI 不用自己算日期 */
+export function dateGuide(): string {
+  const { date: today } = taipeiToday();
+  const dow = new Date(today + "T00:00:00Z").getUTCDay(); // 0=日
+  const mon = addDays(today, -((dow + 6) % 7));
+  const month = today.slice(0, 7);
+  const lastDay = (ym: string) => { const [y, m] = ym.split("-").map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
+  const prevMonth = addDays(`${month}-01`, -1).slice(0, 7);
+  return [
+    `今天 ${dayLabel(today)}；昨天 ${dayLabel(addDays(today, -1))}；明天 ${dayLabel(addDays(today, 1))}；後天 ${dayLabel(addDays(today, 2))}`,
+    `本週（週一到週日）${mon} ～ ${addDays(mon, 6)}；下週 ${addDays(mon, 7)} ～ ${addDays(mon, 13)}；上週 ${addDays(mon, -7)} ～ ${addDays(mon, -1)}`,
+    `本月 ${month}-01 ～ ${lastDay(month)}；上個月 ${prevMonth}-01 ～ ${lastDay(prevMonth)}`,
+    `本週各天：${Array.from({ length: 7 }, (_, i) => { const d = addDays(mon, i); return `週${weekdayOf(d)} ${d.slice(5)}`; }).join("、")}`,
+    `下週各天：${Array.from({ length: 7 }, (_, i) => { const d = addDays(mon, 7 + i); return `週${weekdayOf(d)} ${d.slice(5)}`; }).join("、")}`,
+  ].join("\n");
+}
+
+
+export function norm(s: string | null | undefined): string {
   return String(s ?? "").toLowerCase().replace(/[\s　\-_.,，。、()（）「」【】]/g, "");
 }
 
@@ -54,7 +79,7 @@ const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 const wdOf = (d: string) => ["日", "一", "二", "三", "四", "五", "六"][new Date(d + "T00:00:00Z").getUTCDay()];
 
 // 確定性比對：完全相符（代號/名稱/簡稱/別名）→ 唯一包含 → 編輯距離 ≤1（且唯一）。對不到就回 null，交給內勤。
-function matchByNames<T extends { id: string; code: string | null; name: string; aliases: string[] | null }>(
+export function matchByNames<T extends { id: string; code: string | null; name: string; aliases: string[] | null }>(
   list: T[], text: string | null | undefined, hint: string | null | undefined, extra?: (t: T) => (string | null)[],
 ): { item: T | null; candidates: T[] } {
   const keysOf = (t: T) => [t.code, t.name, ...(t.aliases ?? []), ...(extra ? extra(t) : [])].map(norm).filter(Boolean);
@@ -95,6 +120,31 @@ async function loadCatalog(sb: any, tenantId: string): Promise<Catalog> {
   ]);
   const customers = ((c ?? []) as any[]).map((x) => ({ ...x, eip_customer_address: (x.eip_customer_address ?? []).filter((a: any) => a.is_active !== false) }));
   return { customers: customers as Cust[], products: (p ?? []) as Prod[] };
+}
+
+// 從訊息裡找出「唯一」提到的客戶（代號／名稱／簡稱／別名／分店），找不到或不只一家就回 null
+export function detectCustomer(catalog: Catalog, text: string): Cust | null {
+  const t = norm(text);
+  if (!t) return null;
+  const hits = catalog.customers.filter((c) =>
+    [c.code, c.name, c.short_name, ...(c.aliases ?? [])].map(norm).some((k) => k.length >= 2 && t.includes(k)));
+  return hits.length === 1 ? hits[0] : null;
+}
+
+// 照舊下單：把該客戶最近兩張已確認訂單的品項給 AI 參考（老闆說「照舊／跟上次一樣」時沿用）
+export async function customerHistoryHint(sb: any, tenantId: string, catalog: Catalog, text: string): Promise<string | null> {
+  const c = detectCustomer(catalog, text);
+  if (!c) return null;
+  const { data: orders } = await sb.from("eip_sales_order")
+    .select("id, order_no, order_date, delivery_date, eip_customer_address(label), eip_sales_order_line(line_no, qty, unit, product_text, eip_product(code, name))")
+    .eq("tenant_id", tenantId).eq("customer_id", c.id).eq("status", "confirmed").is("deleted_at", null)
+    .order("created_at", { ascending: false }).limit(2);
+  if (!orders?.length) return null;
+  return `此客戶（${c.name}）最近的已確認訂單：\n` + (orders as any[]).map((o) => {
+    const ls = [...(o.eip_sales_order_line ?? [])].sort((a: any, b: any) => a.line_no - b.line_no)
+      .map((l: any) => `${l.eip_product?.code ?? "-"}｜${l.eip_product?.name ?? l.product_text} × ${Number(l.qty)}${l.unit ?? ""}`).join("；");
+    return `・${o.order_no}（訂 ${o.order_date}${o.eip_customer_address?.label ? `，送${o.eip_customer_address.label}` : ""}）：${ls}`;
+  }).join("\n");
 }
 
 type OrderSetting = { qty_alert_ratio: number; no_delivery_weekdays: number[]; holidays: string[] };
@@ -179,11 +229,12 @@ export interface ParsedOrder {
 
 export async function parseOrder(apiKey: string, catalog: Catalog, input: {
   text?: string; image?: { mime: string; b64: string }; pdf?: { b64: string }; sheetText?: string; existing?: unknown; senderName: string;
+  history?: string | null;
 }): Promise<ParsedOrder> {
   const { date, weekday } = taipeiToday();
   const system =
     `你是艾士實業的訂單整理助理。把老闆（${input.senderName}）從 LINE 傳來的訂單內容整理成結構化資料，呼叫 submit_order 回報。\n` +
-    `今天是 ${date}（星期${weekday}），時區台北。\n` +
+    `今天是 ${date}（星期${weekday}），時區台北。日期對照（直接使用，不要自己推算）：\n${dateGuide()}\n` +
     `規則：\n` +
     `1. 客戶、品項只能從下方主檔中對應；主檔裡沒有、或有兩個以上可能時，code 欄留空，原始說法照填，並在 issues 說明。絕對不可自己編造代號。\n` +
     `2. 數量一律轉成阿拉伯數字（「一打」=12、「半打」=6 要寫在 issues 提醒換算）；單位照原文，沒講單位就留空。\n` +
@@ -193,11 +244,14 @@ export async function parseOrder(apiKey: string, catalog: Catalog, input: {
     `6. 一則訊息若有多個品項，逐項拆成 lines；同一品項不同規格分開列。\n` +
     `7. 送到哪一家分店或地址，填在 delivery_place（盡量用主檔裡的分店名稱）。\n` +
     `8. 若提供了「目前草稿」，代表老闆是在修改那張草稿：以草稿為基礎套用這次的修改（例：「第2項改20箱」「交期改週五」「再加3箱綠茶」「刪掉第1項」），回傳修改後的完整訂單；草稿裡已有的單價維持原值。\n` +
-    `9. 若提供了「目前草稿」，但這次訊息跟這張訂單無關（例如問行事曆、交辦任務、閒聊），is_order 填 false。\n\n` +
+    `9. 若提供了「目前草稿」，但這次訊息跟這張訂單無關（例如問行事曆、交辦任務、閒聊），is_order 填 false。\n` +
+    `10. 若提供了「此客戶最近的已確認訂單」：老闆說「照舊」「跟上次一樣」「老樣子」時，沿用最近一張的品項與數量，再套用他這次說的增減（例：「照舊，原味多 5 箱」）；沒有這樣說時，只把它當作品名比對的參考，不要自己加品項。\n` +
+    `11. 中文數字要正確換算（例：「十二」=12、「兩百」=200、「一千五」=1500、「兩箱半」=2.5）。\n\n` +
     catalogText(catalog.customers, catalog.products);
 
   const content: any[] = [];
   if (input.existing) content.push({ type: "text", text: "目前草稿（JSON）：\n" + JSON.stringify(input.existing) });
+  if (input.history) content.push({ type: "text", text: input.history });
   if (input.image) content.push({ type: "image", source: { type: "base64", media_type: input.image.mime, data: input.image.b64 } });
   if (input.pdf) content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: input.pdf.b64 } });
   if (input.sheetText) content.push({ type: "text", text: "檔案內容（試算表轉文字）：\n" + input.sheetText.slice(0, 30000) });
@@ -207,7 +261,7 @@ export async function parseOrder(apiKey: string, catalog: Catalog, input: {
     method: "POST",
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
-      model: ORDER_MODEL, max_tokens: 2048, system,
+      model: ORDER_MODEL, max_tokens: 2048, temperature: 0, system,
       tools: [ORDER_TOOL], tool_choice: { type: "tool", name: "submit_order" },
       messages: [{ role: "user", content }],
     }),
