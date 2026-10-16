@@ -67,7 +67,7 @@ begin
       if v_days is null or v_days < 1 then
         raise exception '無效的保留天數：%', v_table;
       end if;
-      v_cutoff := v_started - make_interval(days => v_days);
+      v_cutoff := now() - make_interval(days => v_days);
 
       if p_dry_run then
         execute format('select count(*) from public.%I where created_at < $1', v_table)
