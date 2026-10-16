@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
-type Msg = { from: "me" | "bot" | "sys"; text: string; quick?: string[]; ms?: number; orderNo?: string; ask?: string };
+type Quick = { label: string; text: string };
+type Msg = { from: "me" | "bot" | "sys"; text: string; quick?: Quick[]; ms?: number; orderNo?: string; ask?: string };
 type ExDraft = { input_text: string; expected_text: string; customer_id: string | null; order_no: string };
 
 const SAMPLES = [
@@ -58,7 +59,8 @@ export function LineTestPanel() {
           const prevSame = orderNo && [...m].reverse().find((x) => x.orderNo === orderNo);
           return {
             from: "bot" as const, text,
-            quick: (r.quickReply?.items ?? []).map((q: any) => q?.action?.text).filter(Boolean),
+            // 按鈕顯示 LINE 上看到的文字（label），點了送出它代表的訊息（text）
+            quick: (r.quickReply?.items ?? []).map((q: any) => ({ label: String(q?.action?.label ?? q?.action?.text ?? ""), text: String(q?.action?.text ?? "") })).filter((q: Quick) => q.text),
             ms: i === replies.length - 1 ? data?.ms : undefined,
             orderNo, ask: orderNo ? (prevSame ? (/^(第\s*\d+\s*項是|客戶改成)\s/.test(content) ? prevSame.ask : `${prevSame.ask ?? firstAsk ?? ""}\n${content}`.trim()) : content) : undefined,
           };
@@ -106,7 +108,7 @@ export function LineTestPanel() {
                 <div className={`whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm shadow-sm ${m.from === "me" ? "bg-[#06c755] text-white" : m.from === "sys" ? "bg-rose-50 text-rose-800 border border-rose-200" : "bg-background"}`}>{m.text}</div>
                 {!!m.quick?.length && (
                   <div className="flex flex-wrap gap-1.5">
-                    {m.quick.map((q) => <button key={q} type="button" disabled={busy} onClick={() => void send(q)} className="text-xs rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-emerald-800 hover:bg-emerald-100 disabled:opacity-50">{q}</button>)}
+                    {m.quick.map((q) => <button key={q.text} type="button" disabled={busy} title={q.text} onClick={() => void send(q.text)} className="text-xs rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-emerald-800 hover:bg-emerald-100 disabled:opacity-50">{q.label}</button>)}
                   </div>
                 )}
                 {m.ms !== undefined && <div className="text-[10px] text-muted-foreground">回覆耗時 {(m.ms / 1000).toFixed(1)} 秒</div>}

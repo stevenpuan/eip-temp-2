@@ -347,7 +347,8 @@ export async function parseOrder(apiKey: string, catalog: Catalog, input: {
     `11. 中文數字要正確換算（例：「十二」=12、「兩百」=200、「一千五」=1500、「兩箱半」=2.5）。\n` +
     `12. 若提供了【說法對照】與【客戶的專屬說法】，照著理解；專屬說法只適用那一個客戶，且優先於一般品名比對。\n` +
     `13. 品名講得不完整（例：只說「豆乾」）時，若【常訂品項】裡只有一個符合，product_code 可以填它，但該行 uncertain=true；有兩個以上符合就留空。\n` +
-    `14. 【過去範例】只用來理解老闆的寫法，絕對不要把範例裡的品項、數量或日期放進這張單。\n\n` +
+    `14. 【過去範例】只用來理解老闆的寫法，絕對不要把範例裡的品項、數量或日期放進這張單。\n` +
+    `15. issues 只寫訊息本身看不懂、互相矛盾或你不確定的地方；跟某一項有關時，開頭寫「第N項「原文」」。送貨地址沒講、沒講單位、主檔對不對得到、數量是否異常、交期是否合理，系統都會自己檢查，不要寫進 issues。\n\n` +
     catalogText(catalog.customers, catalog.products);
 
   const content: any[] = [];
@@ -473,12 +474,20 @@ export async function saveDraft(sb: any, me: OrderMe, parsed: ParsedOrder, catal
       const u = pm.candidates.filter((c) => usualIds.has(c.id));
       if (u.length === 1) { pm.item = u[0]; guessed = true; }
     }
+    // 4. AI 用品號對應，但老闆的說法本身對不上（或對到多個）＝AI 推測，標 ⚠ 請確認（例：「白的」→ 原味豆乾）
+    let inferred = false;
+    if (pm.item && !aliasItem && !guessed && t) {
+      const byText = matchByNames(catalog.products, l.product_text, null);
+      inferred = byText.item?.id !== pm.item.id;
+    }
     if (!pm.item) {
       issues.push(pm.candidates.length
         ? `${label}有多筆相近品項：${pm.candidates.map((p) => p.name).join("、")}`
         : `${label}不在品項主檔`);
     } else if (guessed) {
       issues.push(`${label}有多筆相近品項，依此客戶常訂先帶「${pm.item.name}」，請確認`);
+    } else if (inferred) {
+      issues.push(`${label}是 AI 依上下文推測為「${pm.item.name}」，請確認`);
     }
     const qty = typeof l.qty === "number" && isFinite(l.qty) && l.qty > 0 ? l.qty : null;
     if (qty === null) issues.push(`${label}沒有數量`);
@@ -503,7 +512,7 @@ export async function saveDraft(sb: any, me: OrderMe, parsed: ParsedOrder, catal
       spec: l.spec || null, qty, unit,
       unit_price: aiPrice, price_source: aiPrice !== null ? "ai" : null,
       note: l.note || null,
-      needs_review: !!l.uncertain || !pm.item || guessed || qty === null || unitBad,
+      needs_review: !!l.uncertain || !pm.item || guessed || inferred || qty === null || unitBad,
       _label: label,
     };
   });
@@ -615,9 +624,10 @@ export async function orderChoices(sb: any, tenantId: string, orderId: string, c
   for (const l of (ls ?? []) as any[]) {
     if (!l.needs_review || !l.product_text) continue;
     const m = matchByNames(cat.products, l.product_text, null);
-    let cands = (m.item ? [] : m.candidates).filter((p) => p.id !== l.product_id);
-    if (!cands.length && !l.product_id && learn) {
-      cands = learn.usual.filter((u) => !u.is_hidden).slice(0, 3)
+    let cands = (m.item ? [m.item] : m.candidates).filter((p) => p.id !== l.product_id);
+    // 說法本身對不到任何品項：改給這個客戶的常訂品項
+    if (!cands.length && learn) {
+      cands = learn.usual.filter((u) => !u.is_hidden && u.product_id !== l.product_id).slice(0, 3)
         .map((u) => cat.products.find((p) => p.id === u.product_id)).filter(Boolean) as Prod[];
     }
     for (const p of cands.slice(0, 4)) out.push({ label: clip(`第${l.line_no}項：${shortName(p.name)}`), text: `第${l.line_no}項是 ${p.code ?? p.name}` });
@@ -637,14 +647,17 @@ export async function pickLineProduct(sb: any, orderId: string, lineNo: number, 
     p = byName.length === 1 ? byName[0] : null;
   }
   if (!p) return false;
-  const { data: line } = await sb.from("eip_sales_order_line").select("id, qty").eq("order_id", orderId).eq("line_no", lineNo).maybeSingle();
+  const { data: line } = await sb.from("eip_sales_order_line").select("id, qty, product_text").eq("order_id", orderId).eq("line_no", lineNo).maybeSingle();
   if (!line) return false;
   const { error } = await sb.from("eip_sales_order_line")
     .update({ product_id: p.id, unit_price: null, price_source: null, needs_review: line.qty === null }).eq("id", line.id);
   if (error) throw new Error(error.message);
   const { data: o } = await sb.from("eip_sales_order").select("ai_issues").eq("id", orderId).maybeSingle();
-  const prefix = `第${lineNo}項「`;
-  const issues = ((o?.ai_issues ?? []) as string[]).filter((s) => !(s.startsWith(prefix) && /多筆相近|不在品項主檔|常訂/.test(s)));
+  // 這一行關於「是哪個品項／單位」的疑問都已解決（單位由品項主單位帶入）；數量、交期等其他提醒保留
+  const pt = String(line.product_text ?? "").trim();
+  const aboutLine = (s: string) => s.startsWith(`第${lineNo}項`) || (!!pt && s.includes(`「${pt}`));
+  const issues = ((o?.ai_issues ?? []) as string[])
+    .filter((s) => !(aboutLine(s) && /相近|主檔|常訂|推測|品名|品項|哪一|對應|單位/.test(s) && !/數量\s*\d|沒有數量|明顯(高|低)於/.test(s)));
   await sb.from("eip_sales_order").update({ ai_issues: issues }).eq("id", orderId);
   return true;
 }
