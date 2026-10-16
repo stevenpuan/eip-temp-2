@@ -114,7 +114,7 @@ async function downloadFromStorage(storagePath: string) {
     toast.error(error ? humanizeError(error, "下載") : "下載失敗：無法產生下載連結，請重新整理頁面再試");
     return;
   }
-  window.open(data.signedUrl, "_blank");
+  window.open(data.signedUrl, "_blank", "noopener,noreferrer");
 }
 
 const DOC_TYPE_LABEL: Record<string, string> = {
@@ -889,7 +889,7 @@ function DocEditorDialog({
   useEffect(() => {
     if (!editorRef.current) return;
     if (mode === "edit" && curVerQ.data) {
-      editorRef.current.innerHTML = curVerQ.data.content ?? "";
+      editorRef.current.innerHTML = sanitizeHtml(curVerQ.data.content ?? ""); // 先消毒再進編輯器（2026-10-17 總檢查）
       setFileUrl(curVerQ.data.file_url ?? "");
       setExistingStoragePath(curVerQ.data.storage_path ?? null);
       setExistingFileName(curVerQ.data.file_name ?? null);
