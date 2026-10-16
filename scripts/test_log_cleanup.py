@@ -20,7 +20,9 @@ class CleanupTests(unittest.TestCase):
         cls.as_user = ["setpriv", "--reuid=1000", "--regid=1000", "--clear-groups", "--"]
         local_env = {k: v for k, v in os.environ.items() if not k.startswith("PG")}
         subprocess.run(cls.as_user + ["initdb", "-D", cls.root + "/data", "-A", "trust", "-U", "postgres"], env=local_env, check=True, stdout=subprocess.DEVNULL)
-        subprocess.run(cls.as_user + ["pg_ctl", "-D", cls.root + "/data", "-l", cls.root + "/server.log", "-o", f"-k {cls.root} -p {cls.port} -h ''", "-w", "start"], check=True, stdout=subprocess.DEVNULL)
+        start = subprocess.run(cls.as_user + ["pg_ctl", "-D", cls.root + "/data", "-l", cls.root + "/server.log", "-o", f"-k {cls.root} -p {cls.port} -h ''", "-w", "start"], env=local_env, stdout=subprocess.DEVNULL)
+        if start.returncode:
+            raise AssertionError(Path(cls.root + "/server.log").read_text())
         cls.sql("""
           create role anon; create role authenticated; create role service_role;
           create schema cron;
