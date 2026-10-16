@@ -368,3 +368,6 @@ select s.tenant_id, v.phrase, v.meaning, v.sort_order
    ('公斤', '1000 公克', 81)
  ) as v(phrase, meaning, sort_order)
 on conflict do nothing;
+
+-- ── 第一次建立常訂品項（用現有已確認訂單；之後匯入凌越歷史或覆核確認會自動更新）
+select public.eip_rebuild_customer_profile(s.tenant_id, null) from public.eip_sales_order_setting s;
