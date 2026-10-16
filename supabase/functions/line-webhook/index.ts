@@ -16,7 +16,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   PENDING_MINUTES, canCreateOrder, loadCatalog, parseOrder, saveDraft, draftSummary,
   downloadLineContent, toB64, storeAttachment, addAttachment, sheetToText, taipeiToday, buildOrderContext,
-  orderChoices, pickLineProduct, PICK_RE, type Choice,
+  orderChoices, pickLineProduct, PICK_RE, detectCustomer, type Choice,
 } from "./order.ts";
 import {
   addDays, dateGuide, getAgenda, getSalesOrder, listTeamTasks, lookupCustomer, lookupPrice, querySalesOrders, salesSummary,
@@ -102,6 +102,11 @@ async function replyOrder(sb: any, token: string, replyToken: string, text: stri
       ] },
     }],
   }, "order");
+}
+
+// LINE 不支援 Markdown：把 AI 偶爾用的粗體、標題、程式碼記號拿掉
+function lineText(s: string): string {
+  return s.replace(/\*\*(.+?)\*\*/g, "$1").replace(/__(.+?)__/g, "$1").replace(/^#{1,6}\s+/gm, "").replace(/`([^`\n]+)`/g, "$1");
 }
 
 // 編輯距離（模糊姓名比對用）
@@ -638,9 +643,25 @@ async function handleBound(sb: any, token: string | undefined, anthKey: string |
     return;
   }
 
+  // ── 「王記照舊…」：有提到客戶就直接走訂單解析（少一次 AI 來回，比較快）
+  if (/照舊|老樣子|跟上次一樣|同上次/.test(text) && await canCreateOrder(sb, me.id)) {
+    const catalog = await loadCatalog(sb, me.tenant_id);
+    if (detectCustomer(catalog, text)) {
+      if (pendOrder) await sb.from("line_pending_order").delete().eq("user_id", me.id);
+      try {
+        const r = await handleOrderInput(sb, token, anthKey, ev, me, { text }, null);
+        if (r === "handled") return;
+      } catch (e) {
+        await logMiss(sb, "line_order", `照舊下單解析失敗：${(e as Error).message}`);
+        if (token && ev.replyToken) await reply(sb, token, ev.replyToken, `訂單解析失敗：${(e as Error).message}`);
+        return;
+      }
+    }
+  }
+
   // ── 一般助理（含 create_task / create_order_draft 工具）
   const convoId = await getConvoId(sb, me);
-  let answer = await askAssistant(sb, anthKey, me as Me, convoId, text);
+  let answer = lineText(await askAssistant(sb, anthKey, me as Me, convoId, text));
   const { data: justPend } = await sb.from("line_pending_task").select("created_at").eq("user_id", me.id).maybeSingle();
   const justStaged = justPend && (Date.now() - new Date(justPend.created_at).getTime()) < 30000;
   const { data: justOrder } = await sb.from("line_pending_order").select("order_id, created_at").eq("user_id", me.id).maybeSingle();
