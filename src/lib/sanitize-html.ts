@@ -23,8 +23,11 @@ const ALLOWED_TAGS = new Set([
   "code", "hr", "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption",
   "img", "figure", "figcaption", "section", "article", "header", "footer",
   "nav", "main", "small", "sup", "sub", "dl", "dt", "dd",
-  "style",
 ]);
+// 2026-10-17 總檢查：<style> 會影響整個頁面（可用來遮蓋畫面、做假登入框），
+//   只開放給管理者維護的線上手冊／系統文件（DocRenderer 傳 allowStyleTag），
+//   一般同仁可寫入的欄位（文件內文、許願池描述）一律不保留 <style>。
+let allowStyleTag = false;
 
 const ALLOWED_ATTR: Record<string, Set<string>> = {
   a: new Set(["href", "target", "rel"]),
@@ -90,6 +93,10 @@ function walk(el: Element) {
       continue;
     }
 
+    if (tag === "style" && !allowStyleTag) {
+      child.remove();
+      continue;
+    }
     if (tag === "style") {
       // 只留過濾後的 CSS 文字，屬性全部丟掉（media/nonce 等一律不需要）
       const css = sanitizeCss(child.textContent ?? "");
@@ -109,10 +116,11 @@ function walk(el: Element) {
   }
 }
 
-export function sanitizeHtml(dirty: string | null | undefined): string {
+export function sanitizeHtml(dirty: string | null | undefined, opts?: { allowStyleTag?: boolean }): string {
   if (!dirty) return "";
   if (typeof window === "undefined" || typeof window.DOMParser === "undefined") return "";
   const doc = new DOMParser().parseFromString(String(dirty), "text/html");
-  walk(doc.body);
+  allowStyleTag = !!opts?.allowStyleTag;
+  try { walk(doc.body); } finally { allowStyleTag = false; }
   return doc.body.innerHTML;
 }

@@ -132,7 +132,7 @@ export function DocRenderer({ content }: { content: string }) {
       <div
         className="eip-doc-html"
         // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) }}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(content, { allowStyleTag: true }) }}
       />
     );
   }

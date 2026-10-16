@@ -60,11 +60,11 @@ function Page() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="代辦事項" description="系統開發中待處理的工作項目" actions={can("dev_todos", "create") ? (
+      <PageHeader title="待辦事項" description="系統開發中待處理的工作項目" actions={can("dev_todos", "create") ? (
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button>新增代辦</Button></DialogTrigger>
+          <DialogTrigger asChild><Button>新增待辦</Button></DialogTrigger>
           <DialogContent aria-describedby={undefined}>
-            <DialogHeader><DialogTitle>新增代辦</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>新增待辦</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div className="space-y-1"><Label>標題</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
               <div className="space-y-1"><Label>說明</Label><Textarea value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
@@ -83,7 +83,7 @@ function Page() {
           <Table>
             <TableHeader><TableRow><TableHead>標題</TableHead><TableHead>狀態</TableHead><TableHead className="text-right">操作</TableHead></TableRow></TableHeader>
             <TableBody>
-              {rows.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-8">尚無代辦</TableCell></TableRow>}
+              {rows.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-8">尚無待辦</TableCell></TableRow>}
               {rows.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">{r.title}</TableCell>
