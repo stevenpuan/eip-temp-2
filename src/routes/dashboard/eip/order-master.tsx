@@ -7,6 +7,7 @@ import { Database, Plus, Search, Download, Upload, FileSpreadsheet, AlertTriangl
 
 // 新資料表尚未進 src/integrations/supabase/types.ts，這裡用 any 版 client。
 import { supabase } from "@/lib/supabase";
+import { fetchAllPages } from "@/lib/fetch-all";
 import { useAuth } from "@/lib/auth";
 import { useAllUsers } from "@/hooks/useUsers";
 import { TAX_TYPE_SHORT, money, type TaxType } from "@/lib/sales-order";
@@ -60,17 +61,15 @@ function OrderMasterPage() {
   const { data: customers = [], isLoading: lc } = useQuery({
     queryKey: ["order-master", "customer"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("eip_customer").select("*, eip_customer_address(id), eip_customer_price(id,source)").order("code", { ascending: true, nullsFirst: false }).order("name").limit(5000);
-      if (error) throw error;
-      return (data ?? []) as CustomerRow[];
+      return (await fetchAllPages((a, b) => supabase.from("eip_customer").select("*, eip_customer_address(id), eip_customer_price(id,source)")
+        .order("code", { ascending: true, nullsFirst: false }).order("name").order("id").range(a, b))) as CustomerRow[];
     },
   });
   const { data: products = [], isLoading: lp } = useQuery({
     queryKey: ["order-master", "product"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("eip_product").select("*, eip_product_unit(unit,ratio)").order("code", { ascending: true, nullsFirst: false }).order("name").limit(5000);
-      if (error) throw error;
-      return (data ?? []) as ProductRow[];
+      return (await fetchAllPages((a, b) => supabase.from("eip_product").select("*, eip_product_unit(unit,ratio)")
+        .order("code", { ascending: true, nullsFirst: false }).order("name").order("id").range(a, b))) as ProductRow[];
     },
   });
   const refresh = () => void qc.invalidateQueries({ queryKey: ["order-master"] });

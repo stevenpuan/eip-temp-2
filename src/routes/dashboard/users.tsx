@@ -68,10 +68,12 @@ const statusLabel: Record<string, string> = {
 };
 const invStatusLabel: Record<string, string> = { unused: "未使用", used: "已使用", expired: "已過期" };
 
+// 邀請碼用密碼學亂數（Math.random 可被推測），10 碼、去掉易混淆字元（2026-10-17 總檢查）
 function genCode() {
-  return (
-    Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6)
-  ).toUpperCase();
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const buf = new Uint32Array(10);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (n) => chars[n % chars.length]).join("");
 }
 
 function UsersPage() {
@@ -160,7 +162,14 @@ function UsersPage() {
       const { data: existing } = await supabase.from("user_roles").select("role_id").eq("user_id", id);
       if (!existing || existing.length === 0) {
         const { data: role } = await supabase.from("roles").select("id").eq("code", "member").maybeSingle();
-        if (role) await supabase.from("user_roles").insert({ user_id: id, role_id: role.id });
+        if (role) {
+          const { error: rErr } = await supabase.from("user_roles").insert({ user_id: id, role_id: role.id });
+          if (rErr) {
+            toast.error(`帳號已啟用，但預設角色沒有設定成功：${humanizeError(rErr, "設定角色")}。請到「角色」欄位手動指定，否則此人看不到任何選單。`);
+            qc.invalidateQueries({ queryKey: ["users"] });
+            return;
+          }
+        }
       }
     }
     toast.success("已更新");
