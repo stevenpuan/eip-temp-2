@@ -418,7 +418,8 @@ async function sanityIssues(sb: any, me: OrderMe, setting: OrderSetting, custome
 export async function saveDraft(sb: any, me: OrderMe, parsed: ParsedOrder, catalog: Catalog, opts: {
   existingOrderId?: string | null; rawText?: string | null; attachments?: Attachment[];
 }): Promise<{ orderId: string; orderNo: string }> {
-  const issues = [...parsed.issues];
+  const issues: string[] = [];           // 伺服器自己檢查出來的（精確）
+  const productIssueLines = new Set<number>();
   const { date: today } = taipeiToday();
   const cm = matchByNames(catalog.customers, parsed.customer_text, parsed.customer_code, (c) => [c.short_name]);
   if (!cm.item && (parsed.customer_text || parsed.customer_code)) {
@@ -479,6 +480,8 @@ export async function saveDraft(sb: any, me: OrderMe, parsed: ParsedOrder, catal
     if (pm.item && !aliasItem && !guessed && t) {
       const byText = matchByNames(catalog.products, l.product_text, null);
       inferred = byText.item?.id !== pm.item.id;
+      // 說法對到多個、AI 選的剛好是這個客戶常訂的 → 當作「依常訂判斷」
+      if (inferred && byText.candidates.length > 1 && usualIds.has(pm.item.id)) { guessed = true; inferred = false; }
     }
     if (!pm.item) {
       issues.push(pm.candidates.length
@@ -489,6 +492,7 @@ export async function saveDraft(sb: any, me: OrderMe, parsed: ParsedOrder, catal
     } else if (inferred) {
       issues.push(`${label}是 AI 依上下文推測為「${pm.item.name}」，請確認`);
     }
+    if (!pm.item || guessed || inferred) productIssueLines.add(i + 1);
     const qty = typeof l.qty === "number" && isFinite(l.qty) && l.qty > 0 ? l.qty : null;
     if (qty === null) issues.push(`${label}沒有數量`);
     let unitBad = false;
@@ -520,7 +524,15 @@ export async function saveDraft(sb: any, me: OrderMe, parsed: ParsedOrder, catal
 
   issues.push(...await sanityIssues(sb, me, setting, cm.item?.id ?? null, deliveryDate, opts.existingOrderId ?? null,
     lines.map((l) => ({ product_id: l.product_id, qty: l.qty, unit: l.unit, label: l._label })), learn, catalog.products));
-  header.ai_issues = Array.from(new Set(issues)).slice(0, 20);
+  // AI 寫的疑問：伺服器已經精確檢查過的（品項對應、沒講單位、沒講送貨地點而帶預設）就不重複列
+  const aiIssues = (parsed.issues ?? []).map((x) => String(x ?? "").trim()).filter(Boolean).filter((x) => {
+    const n = Number(x.match(/^第\s*(\d+)\s*項/)?.[1] ?? 0);
+    if (n && productIssueLines.has(n) && /品|對應|推測|常訂|相近|主檔|別名|哪一/.test(x)) return false;
+    if (/單位/.test(x) && /(未|沒|無)(有)?(指定|講|說|提)/.test(x)) return false;
+    if (!place && /送貨|地點|地址|分店/.test(x) && /(未|沒|無)(有)?(明確)?(指定|講|說|提)/.test(x)) return false;
+    return true;
+  });
+  header.ai_issues = Array.from(new Set([...aiIssues, ...issues])).slice(0, 20);
 
   let orderId = opts.existingOrderId ?? null;
   let orderNo = "";
