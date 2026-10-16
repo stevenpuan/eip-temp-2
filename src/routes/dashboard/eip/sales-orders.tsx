@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -26,6 +26,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SearchSelect } from "@/components/eip/SearchSelect";
+import { NumberInput } from "@/components/eip/NumberInput";
 import {
   PAYMENT_TERMS_PRESETS, PRICE_SOURCE_LABEL, TAX_TYPE_LABEL, TAX_TYPE_SHORT, calcTotals, money,
   type PriceSource, type TaxType,
@@ -76,7 +77,21 @@ type Line = {
 };
 
 const fmtDT = (s: string | null) => (s ? new Date(s).toLocaleString("zh-TW", { hour12: false }) : "—");
-const numOrNull = (v: string) => (v.trim() === "" || isNaN(Number(v)) ? null : Number(v));
+const WD = ["日", "一", "二", "三", "四", "五", "六"];
+const weekdayOf = (d: string | null) => (d ? WD[new Date(d + "T00:00:00Z").getUTCDay()] : "");
+type OrderSetting = { default_tax_type: TaxType; tax_rate: number; no_delivery_weekdays: number[]; holidays: string[] };
+const isNoDeliveryDay = (s: OrderSetting, d: string | null) => !!d && (s.no_delivery_weekdays.includes(new Date(d + "T00:00:00Z").getUTCDay()) || s.holidays.includes(d));
+const nextDeliveryDay = (s: OrderSetting, d: string) => {
+  const x = new Date(d + "T00:00:00Z");
+  for (let i = 0; i < 14 && isNoDeliveryDay(s, x.toISOString().slice(0, 10)); i++) x.setUTCDate(x.getUTCDate() + 1);
+  return x.toISOString().slice(0, 10);
+};
+// 用來判斷「有沒有未儲存的修改」
+const snapshotOf = (o: Order | null, ls: Line[]) => JSON.stringify(o ? [
+  o.customer_id, o.customer_address_id, o.contact_name ?? "", o.contact_phone ?? "", o.order_date, o.delivery_date ?? "", o.delivery_address ?? "",
+  o.delivery_time_window ?? "", o.payment_terms ?? "", o.tax_type, o.note ?? "", o.erp_order_no ?? "",
+  ls.map((l) => [l.product_id, l.product_text, l.spec ?? "", l.qty, l.unit ?? "", l.unit_price, l.note ?? ""]),
+] : null);
 
 function SalesOrdersPage() {
   const { can } = useAuth();
@@ -227,7 +242,9 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [addresses, setAddresses] = useState<Address[]>([]);
-  const [setting, setSetting] = useState<{ default_tax_type: TaxType; tax_rate: number }>({ default_tax_type: "exclusive", tax_rate: 0.05 });
+  const [setting, setSetting] = useState<OrderSetting>({ default_tax_type: "exclusive", tax_rate: 0.05, no_delivery_weekdays: [0], holidays: [] });
+  const snap = useRef<string>("");
+  const blankOnLoad = useRef(false);
   const [logs, setLogs] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
@@ -248,16 +265,23 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
       supabase.from("eip_customer").select("id,code,name,short_name,address,is_active,aliases,contact_name,phone,payment_terms,tax_type,delivery_time_window,delivery_lead_days,delivery_note").order("name").limit(3000),
       supabase.from("eip_product").select("id,code,name,spec,unit,unit_price,is_active,aliases,eip_product_unit(unit)").order("name").limit(5000),
       supabase.from("eip_sales_order_log").select("*").eq("order_id", orderId).order("created_at"),
-      supabase.from("eip_sales_order_setting").select("default_tax_type,tax_rate").maybeSingle(),
+      supabase.from("eip_sales_order_setting").select("default_tax_type,tax_rate,no_delivery_weekdays,holidays").maybeSingle(),
     ]);
     if (o.error) { toast.error(humanizeError(o.error, "讀取訂單")); return; }
     const od = o.data as Order;
-    setOrder(od ? { ...od, tax_rate: Number(od.tax_rate ?? 0.05) } : od);
-    setLines(((l.data ?? []) as Line[]));
+    const nextOrder = od ? { ...od, tax_rate: Number(od.tax_rate ?? 0.05) } : od;
+    const nextLines = (l.data ?? []) as Line[];
+    setOrder(nextOrder);
+    setLines(nextLines);
+    snap.current = snapshotOf(nextOrder, nextLines);
+    blankOnLoad.current = !!od && od.source === "web" && !od.customer_id && nextLines.length === 0 && !od.note && !od.raw_text;
     setCustomers((c.data ?? []) as Customer[]);
     setProducts((p.data ?? []) as Product[]);
     setLogs(g.data ?? []);
-    if (s.data) setSetting({ default_tax_type: s.data.default_tax_type, tax_rate: Number(s.data.tax_rate) });
+    if (s.data) setSetting({
+      default_tax_type: s.data.default_tax_type, tax_rate: Number(s.data.tax_rate),
+      no_delivery_weekdays: (s.data.no_delivery_weekdays ?? [0]).map(Number), holidays: (s.data.holidays ?? []).map(String),
+    });
     await loadAddresses(od?.customer_id ?? null);
   };
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [orderId]);
@@ -305,7 +329,7 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
       patch.tax_type = c.tax_type ?? setting.default_tax_type;
       if (!order.delivery_date && c.delivery_lead_days != null) {
         const d = new Date(order.order_date + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + c.delivery_lead_days);
-        patch.delivery_date = d.toISOString().slice(0, 10);
+        patch.delivery_date = nextDeliveryDay(setting, d.toISOString().slice(0, 10));
       }
     }
     setO(patch);
@@ -369,6 +393,12 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
   const setStatus = async (status: Status, extra: Record<string, unknown> = {}) => {
     if (!order) return;
     if (status === "confirmed") {
+      if (!order.customer_id) { toast.error("請先選擇客戶（主檔）再確認"); return; }
+      if (!lines.length) { toast.error("訂單沒有任何品項"); return; }
+      const bad = lines.filter((l) => !l.product_id || !(l.qty && l.qty > 0)).length;
+      if (bad) { toast.error(`有 ${bad} 項還沒對應品項主檔或沒有數量`); return; }
+      if (!order.delivery_date) { toast.error("請填寫交貨日期再確認"); return; }
+      if (isNoDeliveryDay(setting, order.delivery_date) && !window.confirm(`交貨日 ${order.delivery_date}（週${weekdayOf(order.delivery_date)}）是不送貨日，仍要確認嗎？`)) return;
       const missing = lines.filter((l) => l.unit_price === null).length;
       if (missing && !window.confirm(`有 ${missing} 項沒有單價，仍要確認嗎？`)) return;
     }
@@ -409,6 +439,16 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
     window.open(data.signedUrl, "_blank", "noopener");
   };
 
+  // 關閉：有未儲存的修改先確認；手動新增後什麼都沒填就關掉，作廢這張空單，不留在待覆核
+  const requestClose = async () => {
+    const dirty = !!order && snapshotOf(order, lines) !== snap.current;
+    if (editable && dirty && !window.confirm("有尚未儲存的修改，確定要關閉嗎？（修改會遺失）")) return;
+    if (order && blankOnLoad.current && order.status === "pending_review") {
+      await supabase.from("eip_sales_order").update({ deleted_at: new Date().toISOString(), cancelled_reason: "手動新增後未填寫，自動作廢" }).eq("id", order.id);
+    }
+    onClose();
+  };
+
   if (!order) {
     return <Dialog open onOpenChange={(v) => !v && onClose()}><DialogContent><div className="py-8 text-center text-muted-foreground">載入中…</div></DialogContent></Dialog>;
   }
@@ -417,8 +457,8 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
   const sel = "h-9 w-full rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60";
   const taxType = order.tax_type ?? setting.default_tax_type;
   return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-6xl max-h-[92vh] overflow-y-auto">
+    <Dialog open onOpenChange={(v) => { if (!v) void requestClose(); }}>
+      <DialogContent className="max-w-6xl max-h-[92vh] overflow-y-auto [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             訂單 <span className="font-mono">{order.order_no}</span>
@@ -452,7 +492,13 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
             )}
           </div>
           <div className="space-y-1.5"><Label>訂單日期</Label><Input type="date" disabled={!editable} value={order.order_date ?? ""} onChange={(e) => setO({ order_date: e.target.value })} /></div>
-          <div className="space-y-1.5"><Label>交貨日期</Label><Input type="date" disabled={!editable} value={order.delivery_date ?? ""} onChange={(e) => setO({ delivery_date: e.target.value || null })} /></div>
+          <div className="space-y-1.5">
+            <Label>交貨日期{order.delivery_date && <span className="ml-1 font-normal text-muted-foreground">（週{weekdayOf(order.delivery_date)}）</span>}</Label>
+            <Input type="date" disabled={!editable} value={order.delivery_date ?? ""} onChange={(e) => setO({ delivery_date: e.target.value || null })} />
+            {isNoDeliveryDay(setting, order.delivery_date) && order.status !== "confirmed" && order.status !== "cancelled" && (
+              <div className="text-xs text-amber-700 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />不送貨日（可在「訂單設定」調整）</div>
+            )}
+          </div>
           <div className="space-y-1.5">
             <Label>送貨地點</Label>
             <select className={sel} disabled={!editable || addresses.length === 0} value={order.customer_address_id ?? ""} onChange={(e) => changeAddress(e.target.value || null)}>
@@ -488,9 +534,9 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-8">#</TableHead><TableHead className="min-w-[240px]">品項（主檔）</TableHead><TableHead className="w-28">規格</TableHead>
-                  <TableHead className="w-20">數量</TableHead><TableHead className="w-20">單位</TableHead><TableHead className="w-32">單價</TableHead>
-                  <TableHead className="w-28 text-right">金額</TableHead><TableHead>備註</TableHead><TableHead className="w-10" />
+                  <TableHead className="w-8">#</TableHead><TableHead className="min-w-[240px]">品項（主檔）</TableHead><TableHead className="min-w-[110px]">規格</TableHead>
+                  <TableHead className="min-w-[88px]">數量</TableHead><TableHead className="min-w-[80px]">單位</TableHead><TableHead className="min-w-[150px]">單價</TableHead>
+                  <TableHead className="min-w-[96px] text-right">金額</TableHead><TableHead className="min-w-[120px]">備註</TableHead><TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -520,7 +566,7 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
                         )}
                       </TableCell>
                       <TableCell><Input disabled={!editable} value={l.spec ?? ""} onChange={(e) => setL(i, { spec: e.target.value })} /></TableCell>
-                      <TableCell><Input disabled={!editable} inputMode="decimal" value={l.qty ?? ""} onChange={(e) => setL(i, { qty: numOrNull(e.target.value) })} /></TableCell>
+                      <TableCell><NumberInput disabled={!editable} value={l.qty} onValueChange={(v) => setL(i, { qty: v })} /></TableCell>
                       <TableCell>
                         <Input disabled={!editable} list={`so-units-${i}`} value={l.unit ?? ""}
                           onChange={(e) => setL(i, { unit: e.target.value })}
@@ -529,7 +575,7 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <Input disabled={!editable} inputMode="decimal" value={l.unit_price ?? ""} onChange={(e) => setL(i, { unit_price: numOrNull(e.target.value), price_source: "manual" })} />
+                          <NumberInput disabled={!editable} value={l.unit_price} onValueChange={(v) => setL(i, { unit_price: v, price_source: "manual" })} />
                           {ps && <span title={ps.tip} className={`shrink-0 text-[10px] px-1 py-0.5 rounded ${ps.cls}`}>{ps.label}</span>}
                         </div>
                       </TableCell>
