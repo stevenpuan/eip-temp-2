@@ -97,9 +97,19 @@ async function loadCatalog(sb: any, tenantId: string): Promise<Catalog> {
   return { customers: customers as Cust[], products: (p ?? []) as Prod[] };
 }
 
-async function loadSetting(sb: any, tenantId: string): Promise<{ qty_alert_ratio: number }> {
-  const { data } = await sb.from("eip_sales_order_setting").select("qty_alert_ratio").eq("tenant_id", tenantId).maybeSingle();
-  return { qty_alert_ratio: Number(data?.qty_alert_ratio ?? 3) };
+type OrderSetting = { qty_alert_ratio: number; no_delivery_weekdays: number[]; holidays: string[] };
+async function loadSetting(sb: any, tenantId: string): Promise<OrderSetting> {
+  const { data } = await sb.from("eip_sales_order_setting").select("qty_alert_ratio, no_delivery_weekdays, holidays").eq("tenant_id", tenantId).maybeSingle();
+  return {
+    qty_alert_ratio: Number(data?.qty_alert_ratio ?? 3),
+    no_delivery_weekdays: (data?.no_delivery_weekdays ?? [0]).map(Number),
+    holidays: (data?.holidays ?? []).map(String),
+  };
+}
+
+// 不送貨日：設定的星期（預設週日）或休息日
+function isNoDeliveryDay(s: OrderSetting, d: string): boolean {
+  return s.no_delivery_weekdays.includes(new Date(d + "T00:00:00Z").getUTCDay()) || s.holidays.includes(d);
 }
 
 export async function canCreateOrder(sb: any, userId: string): Promise<boolean> {
@@ -219,7 +229,7 @@ function validDate(s: string | undefined | null): string | null {
 }
 
 // 檢查：重複下單、數量異常（與該客戶近 180 天已確認的平均量比）
-async function sanityIssues(sb: any, me: OrderMe, customerId: string | null, deliveryDate: string | null, excludeOrderId: string | null,
+async function sanityIssues(sb: any, me: OrderMe, setting: OrderSetting, customerId: string | null, deliveryDate: string | null, excludeOrderId: string | null,
   lines: { product_id: string | null; qty: number | null; label: string }[]): Promise<string[]> {
   const out: string[] = [];
   if (!customerId) return out;
@@ -234,7 +244,7 @@ async function sanityIssues(sb: any, me: OrderMe, customerId: string | null, del
 
   const ids = lines.map((l) => l.product_id).filter(Boolean) as string[];
   if (!ids.length) return out;
-  const ratio = (await loadSetting(sb, me.tenant_id)).qty_alert_ratio;
+  const ratio = setting.qty_alert_ratio;
   const since180 = new Date(Date.now() - 180 * 864e5).toISOString();
   const { data: hist } = await sb.from("eip_sales_order_line")
     .select("product_id, qty, eip_sales_order!inner(customer_id, status, created_at)")
@@ -274,11 +284,13 @@ export async function saveDraft(sb: any, me: OrderMe, parsed: ParsedOrder, catal
   const isMainAddr = !!place && !!cm.item?.address && norm(place) === norm(cm.item.address);
   if (place && cm.item && !addr && !isMainAddr && (cm.item.eip_customer_address ?? []).length) issues.push(`送貨地點「${place}」不在此客戶的地址清單，請確認`);
 
-  let deliveryDate = validDate(parsed.delivery_date);
+  const setting = await loadSetting(sb, me.tenant_id);
+  const deliveryDate = validDate(parsed.delivery_date);
   if (deliveryDate && deliveryDate < today) issues.push(`交期 ${deliveryDate} 早於今天，請確認`);
   else if (deliveryDate === today) issues.push("交期是今天（當日出貨），請確認是否正確");
+  if (deliveryDate && isNoDeliveryDay(setting, deliveryDate)) issues.push(`交期 ${deliveryDate.slice(5).replace("-", "/")}（週${wdOf(deliveryDate)}）是不送貨日，請確認`);
   if (!deliveryDate) {
-    if (cm.item?.delivery_lead_days != null) issues.push(`未指定交期，已依客戶預設 ${cm.item.delivery_lead_days} 天帶入，請確認`);
+    if (cm.item?.delivery_lead_days != null) issues.push(`未指定交期，已依客戶預設 ${cm.item.delivery_lead_days} 天帶入（遇不送貨日自動順延），請確認`);
     else issues.push("尚未指定交貨日期");
   }
 
@@ -327,7 +339,7 @@ export async function saveDraft(sb: any, me: OrderMe, parsed: ParsedOrder, catal
   });
   if (lines.length === 0) issues.push("沒有解析到任何品項");
 
-  issues.push(...await sanityIssues(sb, me, cm.item?.id ?? null, deliveryDate, opts.existingOrderId ?? null,
+  issues.push(...await sanityIssues(sb, me, setting, cm.item?.id ?? null, deliveryDate, opts.existingOrderId ?? null,
     lines.map((l) => ({ product_id: l.product_id, qty: l.qty, label: l._label }))));
   header.ai_issues = Array.from(new Set(issues)).slice(0, 20);
 
