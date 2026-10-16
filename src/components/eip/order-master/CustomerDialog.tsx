@@ -7,6 +7,7 @@ import { humanizeError } from "@/lib/eip-error";
 import { useActiveUsers } from "@/hooks/useUsers";
 import { CUSTOMER_TYPE_PRESETS, PAYMENT_TERMS_PRESETS, TAX_TYPE_LABEL, money, splitList, type TaxType } from "@/lib/sales-order";
 import { SearchSelect } from "@/components/eip/SearchSelect";
+import { NumberInput } from "@/components/eip/NumberInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,9 +59,10 @@ const FIELD_GROUPS: { title: string; fields: { key: string; label: string; type?
 export function CustomerDialog({ row, canEdit, onClose, onSaved }: { row: CustomerRow | null; canEdit: boolean; onClose: () => void; onSaved: (id: string) => void }) {
   const [id, setId] = useState<string | null>(row?.id ?? null);
   const [tab, setTab] = useState("basic");
+  const [mainAddress, setMainAddress] = useState<string | null>(row?.address ?? null);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto [&>*]:min-w-0">
         <DialogHeader><DialogTitle>{row ? `客戶：${row.name}` : "新增客戶"}</DialogTitle></DialogHeader>
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
@@ -69,8 +71,8 @@ export function CustomerDialog({ row, canEdit, onClose, onSaved }: { row: Custom
             <TabsTrigger value="price" disabled={!id}>專屬價格</TabsTrigger>
             <TabsTrigger value="orders" disabled={!id}>往來訂單</TabsTrigger>
           </TabsList>
-          <TabsContent value="basic"><BasicForm row={row} canEdit={canEdit} onSaved={(nid, isNew) => { setId(nid); onSaved(nid); if (isNew) setTab("addr"); }} /></TabsContent>
-          {id && <TabsContent value="addr"><AddressTab customerId={id} canEdit={canEdit} /></TabsContent>}
+          <TabsContent value="basic"><BasicForm row={row} canEdit={canEdit} onSaved={(nid, isNew, addr) => { setId(nid); setMainAddress(addr); onSaved(nid); if (isNew) setTab("addr"); }} /></TabsContent>
+          {id && <TabsContent value="addr"><AddressTab customerId={id} canEdit={canEdit} mainAddress={mainAddress} /></TabsContent>}
           {id && <TabsContent value="price"><PriceTab customerId={id} canEdit={canEdit} /></TabsContent>}
           {id && <TabsContent value="orders"><OrdersTab customerId={id} /></TabsContent>}
         </Tabs>
@@ -80,7 +82,7 @@ export function CustomerDialog({ row, canEdit, onClose, onSaved }: { row: Custom
   );
 }
 
-function BasicForm({ row, canEdit, onSaved }: { row: CustomerRow | null; canEdit: boolean; onSaved: (id: string, isNew: boolean) => void }) {
+function BasicForm({ row, canEdit, onSaved }: { row: CustomerRow | null; canEdit: boolean; onSaved: (id: string, isNew: boolean, address: string | null) => void }) {
   const { data: users = [] } = useActiveUsers();
   const [form, setForm] = useState<Record<string, any>>(() => ({ ...(row ?? {}), aliases: (row?.aliases ?? []).join(", ") }));
   const [active, setActive] = useState(row?.is_active ?? true);
@@ -111,7 +113,7 @@ function BasicForm({ row, canEdit, onSaved }: { row: CustomerRow | null; canEdit
     toast.success(rowId ? "已儲存客戶資料" : "已新增客戶，可以接著設定送貨地址與專屬價格");
     const isNew = !rowId;
     setRowId(res.data.id);
-    onSaved(res.data.id, isNew);
+    onSaved(res.data.id, isNew, (rec.address as string | null) ?? null);
   };
 
   return (
@@ -157,62 +159,80 @@ function BasicForm({ row, canEdit, onSaved }: { row: CustomerRow | null; canEdit
 
 type Addr = { id?: string; label: string; address: string; receiver_name: string | null; receiver_phone: string | null; delivery_time_window: string | null; note: string | null; is_default: boolean; is_active: boolean };
 
-function AddressTab({ customerId, canEdit }: { customerId: string; canEdit: boolean }) {
+function AddressTab({ customerId, canEdit, mainAddress }: { customerId: string; canEdit: boolean; mainAddress: string | null }) {
   const [rows, setRows] = useState<Addr[]>([]);
+  const [saved, setSaved] = useState<Record<string, string>>({});
   const load = async () => {
     const { data, error } = await supabase.from("eip_customer_address").select("*").eq("customer_id", customerId).order("is_default", { ascending: false }).order("label");
     if (error) { toast.error(humanizeError(error, "讀取地址")); return; }
-    setRows((data ?? []) as Addr[]);
+    const list = (data ?? []) as Addr[];
+    setRows(list);
+    setSaved(Object.fromEntries(list.map((r) => [r.id!, JSON.stringify(r)])));
   };
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [customerId]);
   const setR = (i: number, p: Partial<Addr>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...p } : r)));
+  const isDirty = (r: Addr) => !r.id || saved[r.id] !== JSON.stringify(r);
 
   const saveRow = async (i: number) => {
     const r = rows[i];
     if (!r.label.trim() || !r.address.trim()) { toast.error("地點名稱與地址都要填"); return; }
-    const rec = { tenant_id: DEFAULT_TENANT_ID, customer_id: customerId, label: r.label.trim(), address: r.address.trim(), receiver_name: r.receiver_name || null, receiver_phone: r.receiver_phone || null, delivery_time_window: r.delivery_time_window || null, note: r.note || null, is_default: r.is_default, is_active: r.is_active };
+    if (rows.some((x, j) => j !== i && x.label.trim() === r.label.trim())) { toast.error(`地點名稱「${r.label.trim()}」重複了`); return; }
+    const rec = { tenant_id: DEFAULT_TENANT_ID, customer_id: customerId, label: r.label.trim(), address: r.address.trim(), receiver_name: r.receiver_name?.trim() || null, receiver_phone: r.receiver_phone?.trim() || null, delivery_time_window: r.delivery_time_window?.trim() || null, note: r.note?.trim() || null, is_default: r.is_default, is_active: r.is_active };
     const { error } = r.id ? await supabase.from("eip_customer_address").update(rec).eq("id", r.id) : await supabase.from("eip_customer_address").insert(rec);
     if (error) { toast.error(humanizeError(error, "儲存地址")); return; }
     toast.success("已儲存地址"); void load();
   };
+  // 預設地址：已存檔的直接更新（一次只會有一個預設），再按一次取消預設 → 沒指定分店時改用主要送貨地址
+  const toggleDefault = async (i: number) => {
+    const r = rows[i];
+    const next = !r.is_default;
+    if (!r.id) { setRows((rs) => rs.map((x, j) => ({ ...x, is_default: j === i ? next : next ? false : x.is_default }))); return; }
+    const { error } = await supabase.from("eip_customer_address").update({ is_default: next }).eq("id", r.id);
+    if (error) { toast.error(humanizeError(error, "設定預設地址")); return; }
+    toast.success(next ? `已設「${r.label}」為預設送貨地點` : "已取消預設，沒指定分店時用主要送貨地址");
+    void load();
+  };
   const del = async (i: number) => {
     const r = rows[i];
     if (!r.id) { setRows((rs) => rs.filter((_, j) => j !== i)); return; }
+    if (!window.confirm(`確定刪除送貨地點「${r.label}」？（已建立的訂單不受影響）`)) return;
     const { error } = await supabase.from("eip_customer_address").delete().eq("id", r.id);
     if (error) { toast.error(humanizeError(error, "刪除地址")); return; }
     void load();
   };
+  const defaultRow = rows.find((r) => r.is_default && r.is_active);
 
   return (
-    <div className="space-y-2 pt-2">
-      <p className="text-xs text-muted-foreground">分店／多個卸貨點。老闆在 LINE 說「送中和店」就會自動帶入該地址與收貨人；標記「預設」的地址會在沒指定時自動帶入。</p>
-      <div className="overflow-x-auto rounded-md border">
-        <Table>
-          <TableHeader><TableRow>
-            <TableHead className="w-28">地點名稱</TableHead><TableHead className="min-w-[220px]">地址</TableHead><TableHead className="w-24">收貨人</TableHead>
-            <TableHead className="w-28">電話</TableHead><TableHead className="w-28">收貨時段</TableHead><TableHead className="w-14">預設</TableHead><TableHead className="w-14">啟用</TableHead><TableHead className="w-20" />
-          </TableRow></TableHeader>
-          <TableBody>
-            {rows.length === 0 && <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground">尚未設定分店地址（會使用基本資料的主要送貨地址）</TableCell></TableRow>}
-            {rows.map((r, i) => (
-              <TableRow key={r.id ?? `n${i}`}>
-                <TableCell><Input disabled={!canEdit} value={r.label} onChange={(e) => setR(i, { label: e.target.value })} /></TableCell>
-                <TableCell><Input disabled={!canEdit} value={r.address} onChange={(e) => setR(i, { address: e.target.value })} /></TableCell>
-                <TableCell><Input disabled={!canEdit} value={r.receiver_name ?? ""} onChange={(e) => setR(i, { receiver_name: e.target.value })} /></TableCell>
-                <TableCell><Input disabled={!canEdit} value={r.receiver_phone ?? ""} onChange={(e) => setR(i, { receiver_phone: e.target.value })} /></TableCell>
-                <TableCell><Input disabled={!canEdit} value={r.delivery_time_window ?? ""} onChange={(e) => setR(i, { delivery_time_window: e.target.value })} /></TableCell>
-                <TableCell><button disabled={!canEdit} onClick={() => setRows((rs) => rs.map((x, j) => ({ ...x, is_default: j === i })))} title="設為預設"><Star className={`h-4 w-4 ${r.is_default ? "fill-amber-400 text-amber-500" : "text-muted-foreground"}`} /></button></TableCell>
-                <TableCell><Switch disabled={!canEdit} checked={r.is_active} onCheckedChange={(v) => setR(i, { is_active: v })} /></TableCell>
-                <TableCell className="whitespace-nowrap">{canEdit && <>
-                  <Button size="icon" variant="ghost" onClick={() => saveRow(i)} title="儲存"><Save className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => del(i)} title="刪除"><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>
-                </>}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+    <div className="space-y-3 pt-2">
+      <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+        <div>分店／多個卸貨點。老闆在 LINE 說「送內湖店」就會帶入該地點的地址、收貨人與收貨時段。</div>
+        <div>沒指定地點時：{defaultRow ? <>用預設地點 <b className="text-foreground">{defaultRow.label}</b></> : mainAddress ? <>用主要送貨地址 <b className="text-foreground">{mainAddress}</b></> : <span className="text-amber-700">沒有主要送貨地址，也沒有預設地點，訂單會帶不出地址</span>}</div>
       </div>
-      {canEdit && <Button size="sm" variant="outline" onClick={() => setRows((rs) => [...rs, { label: "", address: "", receiver_name: null, receiver_phone: null, delivery_time_window: null, note: null, is_default: rs.length === 0, is_active: true }])}><Plus className="h-3.5 w-3.5 mr-1" />新增地址</Button>}
+      {rows.length === 0 && <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">尚未設定分店地址（會使用基本資料的主要送貨地址）</div>}
+      {rows.map((r, i) => (
+        <div key={r.id ?? `n${i}`} className={`rounded-md border p-3 space-y-2 ${r.is_active ? "" : "opacity-60"} ${r.is_default ? "border-amber-300 bg-amber-50/40" : ""}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" disabled={!canEdit} onClick={() => void toggleDefault(i)} title={r.is_default ? "取消預設" : "設為預設"} className="inline-flex items-center gap-1 text-xs rounded px-1.5 py-1 hover:bg-muted disabled:opacity-60">
+              <Star className={`h-4 w-4 ${r.is_default ? "fill-amber-400 text-amber-500" : "text-muted-foreground"}`} />{r.is_default ? "預設" : "設為預設"}
+            </button>
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Switch disabled={!canEdit} checked={r.is_active} onCheckedChange={(v) => setR(i, { is_active: v })} />啟用</label>
+            <div className="ml-auto flex items-center gap-1">
+              {canEdit && isDirty(r) && <span className="text-[11px] text-amber-700">尚未儲存</span>}
+              {canEdit && <Button size="sm" variant={isDirty(r) ? "default" : "outline"} onClick={() => saveRow(i)}><Save className="h-3.5 w-3.5 mr-1" />儲存</Button>}
+              {canEdit && <Button size="icon" variant="ghost" onClick={() => del(i)} title="刪除"><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <div className="col-span-2 space-y-1"><Label className="text-xs">地點名稱 *（例：內湖店）</Label><Input disabled={!canEdit} value={r.label} onChange={(e) => setR(i, { label: e.target.value })} /></div>
+            <div className="col-span-2 sm:col-span-4 space-y-1"><Label className="text-xs">地址 *</Label><Input disabled={!canEdit} value={r.address} onChange={(e) => setR(i, { address: e.target.value })} /></div>
+            <div className="col-span-1 sm:col-span-2 space-y-1"><Label className="text-xs">收貨人</Label><Input disabled={!canEdit} value={r.receiver_name ?? ""} onChange={(e) => setR(i, { receiver_name: e.target.value })} /></div>
+            <div className="col-span-1 sm:col-span-2 space-y-1"><Label className="text-xs">收貨電話</Label><Input disabled={!canEdit} value={r.receiver_phone ?? ""} onChange={(e) => setR(i, { receiver_phone: e.target.value })} /></div>
+            <div className="col-span-2 sm:col-span-2 space-y-1"><Label className="text-xs">收貨時段</Label><Input disabled={!canEdit} placeholder="例：08:00-12:00" value={r.delivery_time_window ?? ""} onChange={(e) => setR(i, { delivery_time_window: e.target.value })} /></div>
+            <div className="col-span-2 sm:col-span-6 space-y-1"><Label className="text-xs">備註</Label><Input disabled={!canEdit} value={r.note ?? ""} onChange={(e) => setR(i, { note: e.target.value })} /></div>
+          </div>
+        </div>
+      ))}
+      {canEdit && <Button size="sm" variant="outline" onClick={() => setRows((rs) => [...rs, { label: "", address: "", receiver_name: null, receiver_phone: null, delivery_time_window: null, note: null, is_default: rs.length === 0 && !mainAddress, is_active: true }])}><Plus className="h-3.5 w-3.5 mr-1" />新增地址</Button>}
     </div>
   );
 }
@@ -294,8 +314,8 @@ export function PriceTab({ customerId, productId, canEdit }: { customerId?: stri
         <div className="overflow-x-auto rounded-md border">
           <Table>
             <TableHeader><TableRow>
-              <TableHead className="min-w-[200px]">品項</TableHead><TableHead className="w-20">單位</TableHead><TableHead className="w-28">單價</TableHead>
-              <TableHead className="w-36">生效日</TableHead><TableHead className="w-36">到期日</TableHead><TableHead>備註</TableHead><TableHead className="w-20" />
+              <TableHead className="min-w-[220px]">品項</TableHead><TableHead className="min-w-[80px]">單位</TableHead><TableHead className="min-w-[110px]">單價</TableHead>
+              <TableHead className="min-w-[150px]">生效日</TableHead><TableHead className="min-w-[150px]">到期日</TableHead><TableHead className="min-w-[120px]">備註</TableHead><TableHead className="w-20" />
             </TableRow></TableHeader>
             <TableBody>
               {contract.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground">尚無專屬價（沿用最近成交價或牌價）</TableCell></TableRow>}
@@ -303,7 +323,7 @@ export function PriceTab({ customerId, productId, canEdit }: { customerId?: stri
                 <TableRow key={r.id ?? `n${i}`}>
                   <TableCell><SearchSelect value={r.product_id} options={prodOpts} disabled={!canEdit || !!r.id} allowClear={false} placeholder="選擇品項" onChange={(v) => setR(i, { product_id: v })} /></TableCell>
                   <TableCell><Input disabled={!canEdit} placeholder={products.find((p) => p.id === r.product_id)?.unit ?? r.eip_product?.unit ?? "主單位"} value={r.unit ?? ""} onChange={(e) => setR(i, { unit: e.target.value || null })} /></TableCell>
-                  <TableCell><Input disabled={!canEdit} inputMode="decimal" value={r.unit_price ?? ""} onChange={(e) => setR(i, { unit_price: e.target.value === "" ? null : Number(e.target.value) })} /></TableCell>
+                  <TableCell><NumberInput disabled={!canEdit} value={r.unit_price} onValueChange={(v) => setR(i, { unit_price: v })} /></TableCell>
                   <TableCell><Input type="date" disabled={!canEdit} value={r.valid_from ?? ""} onChange={(e) => setR(i, { valid_from: e.target.value || null })} /></TableCell>
                   <TableCell><Input type="date" disabled={!canEdit} value={r.valid_to ?? ""} onChange={(e) => setR(i, { valid_to: e.target.value || null })} /></TableCell>
                   <TableCell><Input disabled={!canEdit} value={r.note ?? ""} onChange={(e) => setR(i, { note: e.target.value })} /></TableCell>
