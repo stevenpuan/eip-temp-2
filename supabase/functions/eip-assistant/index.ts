@@ -74,8 +74,10 @@ async function runTool(
   name: string,
   input: Record<string, unknown>,
 ): Promise<unknown> {
-  const today = new Date().toISOString().slice(0, 10);
-  const weekEnd = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  // 台北日期（逾期／本週到期的判斷才不會在台北清晨差一天）
+  const tw = Date.now() + 8 * 3600 * 1000;
+  const today = new Date(tw).toISOString().slice(0, 10);
+  const weekEnd = new Date(tw + 7 * 864e5).toISOString().slice(0, 10);
 
   if (name === "get_my_work_summary") {
     const { data, error } = await sb
@@ -202,6 +204,8 @@ Deno.serve(async (req) => {
     const user_message = (payload.user_message ?? "").trim();
     let conversation_id = payload.conversation_id;
     if (!user_message) return jsonResponse({ error: "缺少 user_message" }, 400);
+    // 2026-10-17 總檢查：限制單則長度，避免貼入超長內容造成 AI 費用暴增
+    if (user_message.length > 4000) return jsonResponse({ error: "訊息太長（上限 4000 字），請分段詢問" }, 400);
 
     // 建立/沿用對話
     if (!conversation_id) {
@@ -222,10 +226,14 @@ Deno.serve(async (req) => {
       .eq("conversation_id", conversation_id)
       .order("created_at", { ascending: true });
 
-    const messages: any[] = (history ?? []).map((m: any) => ({ role: m.role, content: m.content }));
+    // 只帶最近 30 則歷史（第一則必須是使用者訊息），避免長對話每次都把全部內容送給 AI
+    let recent: any[] = (history ?? []).slice(-30);
+    while (recent.length && recent[0].role !== "user") recent = recent.slice(1);
+    const messages: any[] = recent.map((m: any) => ({ role: m.role, content: m.content }));
     messages.push({ role: "user", content: user_message });
 
-    const today = new Date().toISOString().slice(0, 10);
+    // 台北日期（原本用 UTC，台北 00:00–08:00 之間會變成前一天）
+    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
     const systemPrompt =
       `你是「艾士實業 內部管理平台(EIP)」的 AI 助理。\n` +
       `今天是 ${today}。目前使用者:${me.name}${roleName ? `(${roleName})` : ""}。\n` +
