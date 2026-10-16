@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Send, RotateCcw, Bot, User, Loader2 } from "lucide-react";
+import { Send, RotateCcw, Bot, User, Loader2, BookmarkPlus } from "lucide-react";
+import { toast } from "sonner";
+import { humanizeError } from "@/lib/eip-error";
+import { expectedTextOfOrder, todayTaipei } from "@/components/eip/order-master/learning";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
-type Msg = { from: "me" | "bot" | "sys"; text: string; quick?: string[]; ms?: number };
+type Msg = { from: "me" | "bot" | "sys"; text: string; quick?: string[]; ms?: number; orderNo?: string; ask?: string };
+type ExDraft = { input_text: string; expected_text: string; customer_id: string | null; order_no: string };
 
 const SAMPLES = [
   "今天有幾張單要出貨？",
@@ -23,6 +28,8 @@ export function LineTestPanel() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [ex, setEx] = useState<ExDraft | null>(null);
+  const [saving, setSaving] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [msgs, busy]);
 
@@ -42,12 +49,40 @@ export function LineTestPanel() {
       }
       const replies = ((data?.replies ?? []) as any[]).filter((r) => r?.type === "text");
       if (!replies.length) setMsgs((m) => [...m, { from: "sys", text: "（機器人沒有回覆）" }]);
-      else setMsgs((m) => [...m, ...replies.map((r, i) => ({
-        from: "bot" as const, text: String(r.text ?? ""),
-        quick: (r.quickReply?.items ?? []).map((q: any) => q?.action?.text).filter(Boolean),
-        ms: i === replies.length - 1 ? data?.ms : undefined,
-      }))]);
+      else setMsgs((m) => {
+        // 這次對話的第一句（修改草稿時往回找原本下單那句），存範例時當作「老闆的訊息」
+        const firstAsk = [...m].reverse().find((x) => x.from === "bot" && x.ask)?.ask;
+        return [...m, ...replies.map((r, i) => {
+          const text = String(r.text ?? "");
+          const orderNo = text.match(/訂單草稿\s+(SO\d{6}-\d{3})/)?.[1];
+          const prevSame = orderNo && [...m].reverse().find((x) => x.orderNo === orderNo);
+          return {
+            from: "bot" as const, text,
+            quick: (r.quickReply?.items ?? []).map((q: any) => q?.action?.text).filter(Boolean),
+            ms: i === replies.length - 1 ? data?.ms : undefined,
+            orderNo, ask: orderNo ? (prevSame ? (/^(第\s*\d+\s*項是|客戶改成)\s/.test(content) ? prevSame.ask : `${prevSame.ask ?? firstAsk ?? ""}\n${content}`.trim()) : content) : undefined,
+          };
+        })];
+      });
     } finally { setBusy(false); }
+  };
+
+  const openSave = async (m: Msg) => {
+    if (!m.orderNo) return;
+    const r = await expectedTextOfOrder(m.orderNo);
+    if (!r) return toast.error("找不到這張草稿");
+    setEx({ input_text: m.ask ?? "", expected_text: r.text, customer_id: r.customerId, order_no: m.orderNo });
+  };
+  const saveExample = async () => {
+    if (!ex || !ex.input_text.trim() || !ex.expected_text.trim()) return;
+    setSaving(true);
+    const { error } = await supabase.from("eip_order_example").insert({
+      input_text: ex.input_text.trim(), expected_text: ex.expected_text.trim(), customer_id: ex.customer_id, message_date: todayTaipei(), source: "test",
+    });
+    setSaving(false);
+    if (error) return toast.error(humanizeError(error, "存成範例"));
+    toast.success("已存成範例，之後 AI 解析會參考");
+    setEx(null);
   };
 
   return (
@@ -75,6 +110,11 @@ export function LineTestPanel() {
                   </div>
                 )}
                 {m.ms !== undefined && <div className="text-[10px] text-muted-foreground">回覆耗時 {(m.ms / 1000).toFixed(1)} 秒</div>}
+                {m.orderNo && (
+                  <button type="button" onClick={() => void openSave(m)} className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline">
+                    <BookmarkPlus className="h-3 w-3" />改對後存成範例
+                  </button>
+                )}
               </div>
               {m.from === "me" && <User className="h-6 w-6 shrink-0 text-muted-foreground mt-1" />}
             </div>
@@ -92,6 +132,24 @@ export function LineTestPanel() {
           </div>
         </div>
       </CardContent>
+      {ex && (
+        <Dialog open onOpenChange={(o) => !o && setEx(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader><DialogTitle>存成範例（{ex.order_no}）</DialogTitle></DialogHeader>
+            <p className="text-sm text-muted-foreground">右邊是目前草稿的整理結果。<b className="text-foreground">如果有錯，請直接改成正確的</b>再儲存；AI 之後遇到類似寫法會照這個理解。</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div><div className="text-xs text-muted-foreground mb-1">老闆的訊息</div>
+                <Textarea rows={8} value={ex.input_text} onChange={(e) => setEx({ ...ex, input_text: e.target.value })} /></div>
+              <div><div className="text-xs text-muted-foreground mb-1">正確結果</div>
+                <Textarea rows={8} value={ex.expected_text} onChange={(e) => setEx({ ...ex, expected_text: e.target.value })} /></div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEx(null)}>取消</Button>
+              <Button disabled={saving || !ex.input_text.trim() || !ex.expected_text.trim()} onClick={() => void saveExample()}>{saving ? "儲存中…" : "存成範例"}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </Card>
   );
 }
