@@ -9,6 +9,7 @@ import {
 
 // 新資料表尚未進 src/integrations/supabase/types.ts，這裡用 any 版 client。
 import { supabase } from "@/lib/supabase";
+import { fetchAllPages } from "@/lib/fetch-all";
 import { useAuth } from "@/lib/auth";
 import { useAllUsers } from "@/hooks/useUsers";
 import { DEFAULT_TENANT_ID } from "@/lib/eip-constants";
@@ -263,8 +264,11 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
     const [o, l, c, p, g, s] = await Promise.all([
       supabase.from("eip_sales_order").select("*").eq("id", orderId).maybeSingle(),
       supabase.from("eip_sales_order_line").select("*").eq("order_id", orderId).order("line_no"),
-      supabase.from("eip_customer").select("id,code,name,short_name,address,is_active,aliases,contact_name,phone,payment_terms,tax_type,delivery_time_window,delivery_lead_days,delivery_note").order("name").limit(3000),
-      supabase.from("eip_product").select("id,code,name,spec,unit,unit_price,is_active,aliases,eip_product_unit(unit,ratio)").order("name").limit(5000),
+      // 客戶／品項可能超過 1000 筆（PostgREST 單次上限），分頁抓完
+      fetchAllPages((a, b) => supabase.from("eip_customer").select("id,code,name,short_name,address,is_active,aliases,contact_name,phone,payment_terms,tax_type,delivery_time_window,delivery_lead_days,delivery_note").order("name").order("id").range(a, b))
+        .then((data) => ({ data, error: null })),
+      fetchAllPages((a, b) => supabase.from("eip_product").select("id,code,name,spec,unit,unit_price,is_active,aliases,eip_product_unit(unit,ratio)").order("name").order("id").range(a, b))
+        .then((data) => ({ data, error: null })),
       supabase.from("eip_sales_order_log").select("*").eq("order_id", orderId).order("created_at"),
       supabase.from("eip_sales_order_setting").select("default_tax_type,tax_rate,no_delivery_weekdays,holidays,qty_alert_ratio").maybeSingle(),
     ]);
@@ -480,7 +484,9 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
     const dirty = !!order && snapshotOf(order, lines) !== snap.current;
     if (editable && dirty && !window.confirm("有尚未儲存的修改，確定要關閉嗎？（修改會遺失）")) return;
     if (order && blankOnLoad.current && order.status === "pending_review") {
-      await supabase.from("eip_sales_order").update({ deleted_at: new Date().toISOString(), cancelled_reason: "手動新增後未填寫，自動作廢" }).eq("id", order.id);
+      // 直接 UPDATE deleted_at 會被 RLS 擋；改由資料庫函式確認是空白網頁單後再作廢（2026-10-17 總檢查）
+      const { error: vErr } = await supabase.rpc("eip_void_blank_sales_order", { p_order: order.id });
+      if (vErr) toast.error(humanizeError(vErr, "作廢空白訂單"));
     }
     onClose();
   };
