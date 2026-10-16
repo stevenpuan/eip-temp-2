@@ -6,6 +6,7 @@ import { DEFAULT_TENANT_ID } from "@/lib/eip-constants";
 import { humanizeError } from "@/lib/eip-error";
 import { money, splitList } from "@/lib/sales-order";
 import { PriceTab } from "./CustomerDialog";
+import { NumberInput } from "@/components/eip/NumberInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +38,7 @@ export function ProductDialog({ row, canEdit, onClose, onSaved }: { row: Product
   const [mainPrice, setMainPrice] = useState<number | null>(row?.unit_price ?? null);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto [&>*]:min-w-0">
         <DialogHeader><DialogTitle>{row ? `品項：${row.name}` : "新增品項"}</DialogTitle></DialogHeader>
         <Tabs defaultValue="basic">
           <TabsList>
@@ -134,17 +135,17 @@ function UnitTab({ productId, canEdit, mainUnit, mainPrice }: { productId: strin
   };
   return (
     <div className="space-y-2 pt-2">
-      <p className="text-xs text-muted-foreground">主單位：<b>{mainUnit ?? "（未設定）"}</b>，牌價 {money(mainPrice) || "未設定"}。其他銷售單位請填「1 個這種單位 = 幾個主單位」，例：主單位箱、一箱 12 包，則「包」的換算率填 0.0833。單價留空時，系統以「換算率 × 牌價」計算。</p>
+      <p className="text-xs text-muted-foreground">主單位：<b>{mainUnit ?? "（未設定）"}</b>，牌價 {money(mainPrice) || "未設定"}。其他銷售單位請填「1 個這種單位 = 幾個主單位」，例：主單位箱、一箱 12 包，則「包」的換算率填 1/12（可直接輸入 <code>1/12</code>）。單價留空時，系統以「換算率 × 牌價」計算。</p>
       <div className="overflow-x-auto rounded-md border">
         <Table>
-          <TableHeader><TableRow><TableHead className="w-28">單位</TableHead><TableHead className="w-32">換算率</TableHead><TableHead className="w-32">單價</TableHead><TableHead>換算後參考價</TableHead><TableHead className="w-36">條碼</TableHead><TableHead className="w-20" /></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead className="min-w-[90px]">單位</TableHead><TableHead className="min-w-[110px]">換算率</TableHead><TableHead className="min-w-[110px]">單價</TableHead><TableHead className="min-w-[100px]">換算後參考價</TableHead><TableHead className="min-w-[140px]">條碼</TableHead><TableHead className="w-20" /></TableRow></TableHeader>
           <TableBody>
             {rows.length === 0 && <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground">只賣主單位就不用設定</TableCell></TableRow>}
             {rows.map((r, i) => (
               <TableRow key={r.id ?? `n${i}`}>
                 <TableCell><Input disabled={!canEdit} value={r.unit} onChange={(e) => setR(i, { unit: e.target.value })} /></TableCell>
-                <TableCell><Input disabled={!canEdit} inputMode="decimal" value={r.ratio ?? ""} onChange={(e) => setR(i, { ratio: e.target.value === "" ? null : Number(e.target.value) })} /></TableCell>
-                <TableCell><Input disabled={!canEdit} inputMode="decimal" placeholder="自動" value={r.unit_price ?? ""} onChange={(e) => setR(i, { unit_price: e.target.value === "" ? null : Number(e.target.value) })} /></TableCell>
+                <TableCell><NumberInput disabled={!canEdit} value={r.ratio} onValueChange={(v) => setR(i, { ratio: v })} /></TableCell>
+                <TableCell><NumberInput disabled={!canEdit} placeholder="自動" value={r.unit_price} onValueChange={(v) => setR(i, { unit_price: v })} /></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{r.unit_price ?? (r.ratio && mainPrice ? money(Math.round(r.ratio * mainPrice * 100) / 100) : "—")}</TableCell>
                 <TableCell><Input disabled={!canEdit} value={r.barcode ?? ""} onChange={(e) => setR(i, { barcode: e.target.value })} /></TableCell>
                 <TableCell className="whitespace-nowrap">{canEdit && <>
