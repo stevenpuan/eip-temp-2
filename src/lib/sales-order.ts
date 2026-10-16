@@ -98,6 +98,16 @@ export const HEADER_ALIASES: Record<string, Record<string, string[]>> = {
     valid_to: ["到期日", "結束日", "截止日期"],
     note: ["備註"],
   },
+  // 歷史銷貨（凌越「銷貨明細表」等）：只用來讓 AI 學習常訂品項、慣用單位、正常數量與最近成交價
+  history: {
+    date: ["銷貨日期", "出貨日期", "單據日期", "交易日期", "銷售日期", "日期"],
+    doc_no: ["銷貨單號", "出貨單號", "單據號碼", "單據編號", "單號"],
+    customer_ref: ["客戶代號", "客戶編號", "客戶代碼", "客戶簡稱", "客戶名稱", "客戶"],
+    product_ref: ["產品代號", "品號", "產品編號", "商品編號", "貨品代號", "料號", "品名"],
+    qty: ["數量", "銷貨數量", "出貨數量", "交易數量"],
+    unit: ["單位", "銷貨單位"],
+    unit_price: ["單價", "銷貨單價", "售價"],
+  },
 };
 
 export const SHEET_ALIASES: Record<string, string[]> = {
@@ -106,6 +116,7 @@ export const SHEET_ALIASES: Record<string, string[]> = {
   product: ["品項", "品項主檔", "產品", "商品", "產品資料", "product", "products"],
   unit: ["品項單位", "單位換算", "單位"],
   price: ["客戶價格", "客戶專屬價", "合約價", "價格"],
+  history: ["歷史銷貨", "銷貨明細", "銷貨明細表", "銷貨紀錄", "銷售明細", "出貨明細", "歷史訂單"],
 };
 
 const normHeader = (s: string) => s.toLowerCase().replace(/[\s　()（）_\-:：*]/g, "");
@@ -130,6 +141,7 @@ export function guessSheetKind(sheetName: string, headers: string[]): string | n
   // 依欄名判斷
   const hs = headers.map(normHeader);
   const has = (kind: string, field: string) => [field, ...HEADER_ALIASES[kind][field]].some((x) => hs.includes(normHeader(x)));
+  if (has("history", "date") && has("history", "qty") && has("history", "customer_ref") && has("history", "product_ref")) return "history";
   if (has("price", "customer_ref") && has("price", "product_ref") && has("price", "unit_price")) return "price";
   if (has("unit", "ratio")) return "unit";
   if (has("address", "label") && has("address", "customer_ref")) return "address";

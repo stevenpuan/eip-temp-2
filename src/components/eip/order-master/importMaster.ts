@@ -8,7 +8,7 @@ export type ImportReport = {
   sheet: string; kind: string; inserted: number; updated: number; skipped: number; errors: string[];
 }[];
 
-const KIND_LABEL: Record<string, string> = { customer: "客戶", address: "送貨地址", product: "品項", unit: "品項單位", price: "客戶價格" };
+const KIND_LABEL: Record<string, string> = { customer: "客戶", address: "送貨地址", product: "品項", unit: "品項單位", price: "客戶價格", history: "歷史銷貨" };
 export const kindLabel = (k: string) => KIND_LABEL[k] ?? k;
 
 const str = (v: unknown) => { const s = String(v ?? "").trim(); return s || null; };
@@ -70,7 +70,7 @@ export async function importWorkbook(file: File, opts: { onlyKind?: string; user
     const headers = rows.length ? Object.keys(rows[0]) : [];
     return { name, rows, kind: guessSheetKind(name, headers) ?? (wb.SheetNames.length === 1 ? opts.onlyKind ?? null : null) };
   }).filter((s) => s.kind && s.rows.length);
-  const order = ["customer", "address", "product", "unit", "price"];
+  const order = ["customer", "address", "product", "unit", "price", "history"];
   sheets.sort((a, b) => order.indexOf(a.kind!) - order.indexOf(b.kind!));
   const report: ImportReport = [];
   const userByName = new Map(opts.users.map((u) => [u.name.trim(), u.id]));
@@ -78,6 +78,8 @@ export async function importWorkbook(file: File, opts: { onlyKind?: string; user
   for (const sh of sheets) {
     const rep = { sheet: sh.name, kind: sh.kind!, inserted: 0, updated: 0, skipped: 0, errors: [] as string[] };
     report.push(rep);
+    // 歷史銷貨會「取代」上次匯入的資料，只能在「AI 學習 › 常訂品項」單獨匯入，避免跟主檔一起誤匯
+    if (sh.kind === "history") { rep.skipped = sh.rows.length; rep.errors.push("這是歷史銷貨，請到「AI 學習」分頁的「匯入歷史銷貨」匯入（本次未匯入）"); continue; }
     const rows = sh.rows.map((raw, i) => ({ r: mapRow(sh.kind!, raw), row: i + 2 }));
 
     if (sh.kind === "customer" || sh.kind === "product") {
@@ -178,4 +180,78 @@ export function downloadTemplate() {
   add("品項單位", [{ 品號: "P001", 單位: "包", 換算率: 0.0833, 單價: 110, 條碼: "" }]);
   add("客戶價格", [{ 客戶代號: "C001", 品號: "P001", 單位: "箱", 單價: 1150, 生效日: "2026-01-01", 到期日: "", 備註: "年度合約價" }]);
   XLSX.writeFile(wb, "客戶品項主檔_匯入範本.xlsx");
+}
+
+// ───────────────────────── 歷史銷貨（AI 學習用） ─────────────────────────
+
+export type HistoryReport = {
+  rows: number; inserted: number; skipped: number; returns: number; errors: string[];
+  profile_items: number; prices: number; history_rows: number;
+};
+
+/**
+ * 匯入凌越銷貨明細：取代上次匯入的歷史銷貨，接著重算常訂品項、補上最近成交價。
+ * 客戶、品項以代號比對（也接受名稱／簡稱，會換成主檔代號）；數量 ≤ 0（銷退）略過。
+ */
+export async function importSalesHistory(file: File): Promise<HistoryReport> {
+  const wb = XLSX.read(await file.arrayBuffer(), { cellDates: false });
+  const pick = wb.SheetNames.map((name) => {
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[name], { defval: "" });
+    return { name, rows, kind: guessSheetKind(name, rows.length ? Object.keys(rows[0]) : []) };
+  }).find((x) => x.kind === "history" && x.rows.length);
+  if (!pick) throw new Error("找不到銷貨明細。需要的欄位：銷貨日期、客戶代號、產品代號（品號）、數量；單位、單價、銷貨單號可有可無。");
+
+  const [custs, prods] = await Promise.all([fetchAll("eip_customer", "id,code,name,short_name"), fetchAll("eip_product", "id,code,name")]);
+  const codeIndex = (list: { code: string | null; name: string; short_name?: string | null }[]) => {
+    const m = new Map<string, string | null>();
+    for (const r of list) for (const k of [r.code, r.name, r.short_name]) if (k) m.set(String(k).trim().toLowerCase(), r.code ?? null);
+    return (ref: unknown) => { const k = String(ref ?? "").trim().toLowerCase(); return k ? m.get(k) : undefined; };
+  };
+  const custCode = codeIndex(custs), prodCode = codeIndex(prods);
+  const rep: HistoryReport = { rows: pick.rows.length, inserted: 0, skipped: 0, returns: 0, errors: [], profile_items: 0, prices: 0, history_rows: 0 };
+  const missC = new Map<string, number>(), missP = new Map<string, number>();
+  let badRows = 0;
+  const payload: Record<string, string>[] = [];
+  for (const raw of pick.rows) {
+    const r = mapRow("history", raw);
+    const date = toDate(r.date), qty = toNum(r.qty), price = toNum(r.unit_price);
+    if (!date || qty === null) { badRows++; rep.skipped++; continue; }
+    if (qty <= 0) { rep.returns++; rep.skipped++; continue; }
+    const cc = custCode(r.customer_ref), pc = prodCode(r.product_ref);
+    if (!cc) { const k = String(r.customer_ref ?? "（空白）"); missC.set(k, (missC.get(k) ?? 0) + 1); rep.skipped++; continue; }
+    if (!pc) { const k = String(r.product_ref ?? "（空白）"); missP.set(k, (missP.get(k) ?? 0) + 1); rep.skipped++; continue; }
+    payload.push({
+      date, doc_no: str(r.doc_no) ?? "", customer_code: cc, product_code: pc,
+      qty: String(Math.round(qty * 1000) / 1000), unit: str(r.unit) ?? "", unit_price: price !== null && price >= 0 ? String(Math.round(price * 100) / 100) : "",
+    });
+  }
+  const top = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => `「${k}」${n} 列`).join("、");
+  if (missC.size) rep.errors.push(`主檔找不到（或沒有代號）的客戶 ${missC.size} 家：${top(missC)}${missC.size > 8 ? "…" : ""}`);
+  if (missP.size) rep.errors.push(`主檔找不到（或沒有品號）的品項 ${missP.size} 個：${top(missP)}${missP.size > 8 ? "…" : ""}`);
+  if (badRows) rep.errors.push(`${badRows} 列日期或數量看不懂，已略過`);
+  if (!payload.length) throw new Error(["沒有可匯入的資料。", ...rep.errors].join(" "));
+
+  for (let i = 0; i < payload.length; i += 2000) {
+    const { data, error } = await supabase.rpc("eip_import_sales_history", { p_rows: payload.slice(i, i + 2000), p_replace: i === 0 });
+    if (error) throw new Error(humanizeError(error, "匯入歷史銷貨"));
+    rep.inserted += Number((data as any)?.inserted ?? 0);
+    rep.skipped += Number((data as any)?.skipped ?? 0);
+  }
+  const { data: fin, error: e2 } = await supabase.rpc("eip_finish_sales_history_import");
+  if (e2) throw new Error(humanizeError(e2, "重算常訂品項"));
+  rep.profile_items = Number((fin as any)?.profile_items ?? 0);
+  rep.prices = Number((fin as any)?.prices ?? 0);
+  rep.history_rows = Number((fin as any)?.history_rows ?? 0);
+  return rep;
+}
+
+/** 歷史銷貨範本（欄名與凌越銷貨明細表相容） */
+export function downloadHistoryTemplate() {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+    { 銷貨日期: "2026-09-01", 銷貨單號: "S1150901001", 客戶代號: "C001", 產品代號: "P001", 數量: 10, 單位: "箱", 單價: 1150 },
+    { 銷貨日期: "2026-09-01", 銷貨單號: "S1150901001", 客戶代號: "C001", 產品代號: "P002", 數量: 24, 單位: "包", 單價: 105 },
+    { 銷貨日期: "2026-09-08", 銷貨單號: "S1150908003", 客戶代號: "C001", 產品代號: "P001", 數量: 12, 單位: "箱", 單價: 1150 },
+  ]), "歷史銷貨");
+  XLSX.writeFile(wb, "歷史銷貨_匯入範本.xlsx");
 }
