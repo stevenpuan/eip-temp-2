@@ -9,13 +9,14 @@
 //   學習資料（2026-10-17）：說法對照、客戶專屬說法、常訂品項（含凌越歷史）、過去範例，一起給 AI 參考；
 //   伺服器比對時客戶專屬說法優先、多筆相近時依常訂判斷、沒講單位依慣用單位；有疑問的品項附按鈕讓老闆點選。
 //   5. 老闆回「送出訂單」→ status=pending_review（觸發器通知覆核人員）
-//      直接打字＝修改草稿（例：第2項改20箱、交期改週五），「取消訂單」＝作廢
+//      直接打字＝修改草稿（例：第2項改1020箱、交期改週五），「取消訂單」＝作廢
 // 安全：service_role 繞過 RLS，權限一律以 eip_user_has_perm(使用者, 'eip_sales_order', 'create') 自行把關。
 
 export const ORDER_MODEL = "claude-sonnet-4-6";
 export const PENDING_MINUTES = 60;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const CATALOG_LIMIT = 600;
+const CATALOG_MAX = 20000;          // 伺服器端比對用：全部載入（分頁）
+const PROMPT_LIMIT = { customers: 300, products: 400 }; // 給 AI 的主檔清單：太多時只挑跟訊息相關的
 
 export interface OrderMe { id: string; name: string; tenant_id: string; role: string; department_id?: string | null; line_user_id?: string | null }
 
@@ -113,15 +114,48 @@ function matchAddress(addrs: Addr[], text: string | null | undefined): Addr | nu
   return hit.length === 1 ? hit[0] : null;
 }
 
+async function pageAll(make: (from: number, to: number) => any): Promise<any[]> {
+  const out: any[] = [];
+  for (let from = 0; from < CATALOG_MAX; from += 1000) {
+    const { data, error } = await make(from, from + 999);
+    if (error) throw new Error(error.message);
+    out.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
+// 主檔全部載入（PostgREST 單次最多 1000 筆，分頁抓完；2026-10-17 總檢查：原本只抓前 600 筆，凌越資料一多就對不到）
 async function loadCatalog(sb: any, tenantId: string): Promise<Catalog> {
-  const [{ data: c }, { data: p }] = await Promise.all([
-    sb.from("eip_customer").select("id,code,name,short_name,aliases,address,delivery_lead_days,eip_customer_address(id,label,address,is_active)")
-      .eq("tenant_id", tenantId).eq("is_active", true).order("name").limit(CATALOG_LIMIT),
-    sb.from("eip_product").select("id,code,name,spec,unit,aliases,unit_price,min_order_qty,eip_product_unit(unit,ratio)")
-      .eq("tenant_id", tenantId).eq("is_active", true).order("name").limit(CATALOG_LIMIT),
+  const [c, p] = await Promise.all([
+    pageAll((a, b) => sb.from("eip_customer").select("id,code,name,short_name,aliases,address,delivery_lead_days,eip_customer_address(id,label,address,is_active)")
+      .eq("tenant_id", tenantId).eq("is_active", true).order("name").order("id").range(a, b)),
+    pageAll((a, b) => sb.from("eip_product").select("id,code,name,spec,unit,aliases,unit_price,min_order_qty,eip_product_unit(unit,ratio)")
+      .eq("tenant_id", tenantId).eq("is_active", true).order("name").order("id").range(a, b)),
   ]);
-  const customers = ((c ?? []) as any[]).map((x) => ({ ...x, eip_customer_address: (x.eip_customer_address ?? []).filter((a: any) => a.is_active !== false) }));
-  return { customers: customers as Cust[], products: (p ?? []) as Prod[] };
+  const customers = (c as any[]).map((x) => ({ ...x, eip_customer_address: (x.eip_customer_address ?? []).filter((a: any) => a.is_active !== false) }));
+  return { customers: customers as Cust[], products: p as Prod[] };
+}
+
+/** 給 AI 看的主檔清單：筆數不多就全給；太多時只挑名稱／代號／別名跟訊息有重疊的（伺服器比對仍用完整主檔） */
+export function relevantSubset<T extends { code: string | null; name: string; aliases: string[] | null; short_name?: string | null }>(list: T[], text: string | undefined, limit: number): T[] {
+  if (list.length <= limit || !text) return list.slice(0, limit);
+  const t = norm(text);
+  const grams = new Set<string>();
+  // 只用含中文字的雙字組做模糊比對：數量、日期的數字（例：10 包）不該讓品號帶數字的品項被誤排到前面
+  const cjk = /[㐀-鿿]/;
+  for (let i = 0; i < t.length - 1; i++) { const g = t.slice(i, i + 2); if (cjk.test(g)) grams.add(g); }
+  const scored = list.map((x) => {
+    const keys = [x.code, x.name, x.short_name ?? null, ...(x.aliases ?? [])].map(norm).filter(Boolean);
+    let score = 0;
+    for (const k of keys) {
+      if (k.length >= 2 && t.includes(k)) score += 10;
+      for (let i = 0; i < k.length - 1; i++) if (grams.has(k.slice(i, i + 2))) score += 1;
+    }
+    return { x, score };
+  });
+  // 有重疊的排前面，其餘照原本順序補滿（穩定排序），訊息很短時 AI 仍看得到一部分主檔
+  return scored.sort((a, b) => b.score - a.score).slice(0, limit).map((o) => o.x);
 }
 
 // 從訊息裡找出「唯一」提到的客戶（代號／名稱／簡稱／別名／分店），找不到或不只一家就回 null
@@ -349,7 +383,7 @@ export async function parseOrder(apiKey: string, catalog: Catalog, input: {
     `13. 品名講得不完整（例：只說「豆乾」）時，若【常訂品項】裡只有一個符合，product_code 可以填它，但該行 uncertain=true；有兩個以上符合就留空。\n` +
     `14. 【過去範例】只用來理解老闆的寫法，絕對不要把範例裡的品項、數量或日期放進這張單。\n` +
     `15. issues 只寫訊息本身看不懂、互相矛盾或你不確定的地方；跟某一項有關時，開頭寫「第N項「原文」」。送貨地址沒講、沒講單位、主檔對不對得到、數量是否異常、交期是否合理，系統都會自己檢查，不要寫進 issues。\n\n` +
-    catalogText(catalog.customers, catalog.products);
+    catalogText(relevantSubset(catalog.customers, input.text, PROMPT_LIMIT.customers), relevantSubset(catalog.products, input.text, PROMPT_LIMIT.products));
 
   const content: any[] = [];
   if (input.existing) content.push({ type: "text", text: "目前草稿（JSON）：\n" + JSON.stringify(input.existing) });
@@ -510,13 +544,15 @@ export async function saveDraft(sb: any, me: OrderMe, parsed: ParsedOrder, catal
       issues.push(`${label}數量 ${qty} 低於最小訂量 ${Number(pm.item.min_order_qty)}`);
     }
     const aiPrice = typeof l.unit_price === "number" && isFinite(l.unit_price) ? l.unit_price : null;
+    // 訊息或檔案上寫的價格會蓋過合約價／最近成交價，一律提醒內勤確認（2026-10-17 總檢查）
+    if (aiPrice !== null) issues.push(`${label}使用訊息中的單價 ${aiPrice}（不是系統帶入的價格），請確認`);
     return {
       tenant_id: me.tenant_id, line_no: i + 1,
       product_id: pm.item?.id ?? null, product_text: l.product_text ?? null,
       spec: l.spec || null, qty, unit,
       unit_price: aiPrice, price_source: aiPrice !== null ? "ai" : null,
       note: l.note || null,
-      needs_review: !!l.uncertain || !pm.item || guessed || inferred || qty === null || unitBad,
+      needs_review: !!l.uncertain || !pm.item || guessed || inferred || qty === null || unitBad || aiPrice !== null,
       _label: label,
     };
   });
@@ -705,7 +741,7 @@ export async function addAttachment(sb: any, orderId: string, att: Attachment) {
 }
 
 export async function sheetToText(bytes: Uint8Array): Promise<string> {
-  const XLSX = await import("https://esm.sh/xlsx@0.18.5");
+  const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs"); // 0.18.5 有已知漏洞（CVE-2023-30533、CVE-2024-22363）
   const wb = XLSX.read(bytes, { type: "array" });
   return wb.SheetNames.slice(0, 5).map((n: string) => `# 工作表 ${n}\n` + XLSX.utils.sheet_to_csv(wb.Sheets[n])).join("\n\n");
 }
