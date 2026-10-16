@@ -1,0 +1,472 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  ClipboardList, Plus, Search, Download, Save, CheckCircle2, XCircle, Trash2,
+  Paperclip, AlertTriangle, MessageSquareText, History, UserPlus, PackagePlus, RotateCcw,
+} from "lucide-react";
+
+// 新資料表尚未進 src/integrations/supabase/types.ts，這裡用 any 版 client。
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
+import { useAllUsers } from "@/hooks/useUsers";
+import { DEFAULT_TENANT_ID } from "@/lib/eip-constants";
+import { exportToExcel } from "@/lib/eip-export";
+import { humanizeError } from "@/lib/eip-error";
+import { RequirePerm } from "@/components/RequirePerm";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+export const Route = createFileRoute("/dashboard/eip/sales-orders")({
+  component: () => (
+    <RequirePerm module="eip_sales_order">
+      <SalesOrdersPage />
+    </RequirePerm>
+  ),
+});
+
+type Status = "draft" | "pending_review" | "confirmed" | "cancelled";
+const STATUS_META: Record<Status, { label: string; cls: string }> = {
+  draft: { label: "草稿（老闆未送出）", cls: "bg-muted text-muted-foreground" },
+  pending_review: { label: "待覆核", cls: "bg-amber-100 text-amber-800" },
+  confirmed: { label: "已確認", cls: "bg-emerald-100 text-emerald-800" },
+  cancelled: { label: "已取消", cls: "bg-rose-100 text-rose-700" },
+};
+
+type Customer = { id: string; code: string | null; name: string; short_name: string | null; address: string | null; is_active: boolean };
+type Product = { id: string; code: string | null; name: string; spec: string | null; unit: string | null; unit_price: number | null; is_active: boolean };
+type Order = {
+  id: string; order_no: string; status: Status; source: "line" | "web";
+  customer_id: string | null; customer_text: string | null; contact_name: string | null; contact_phone: string | null;
+  order_date: string; delivery_date: string | null; delivery_address: string | null; note: string | null;
+  raw_text: string | null; ai_summary: string | null; ai_issues: string[]; attachments: { path: string; name: string; mime: string; size: number }[];
+  created_by: string | null; owner_confirmed_at: string | null; reviewed_by: string | null; reviewed_at: string | null;
+  cancelled_reason: string | null; erp_order_no: string | null; created_at: string;
+  eip_customer?: { name: string; code: string | null } | null;
+  eip_sales_order_line?: { id: string; needs_review: boolean }[];
+};
+type Line = {
+  id?: string; line_no: number; product_id: string | null; product_text: string | null; spec: string | null;
+  qty: number | null; unit: string | null; unit_price: number | null; note: string | null; needs_review: boolean;
+};
+
+const fmtDT = (s: string | null) => (s ? new Date(s).toLocaleString("zh-TW", { hour12: false }) : "—");
+const numOrNull = (v: string) => (v.trim() === "" || isNaN(Number(v)) ? null : Number(v));
+
+function SalesOrdersPage() {
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const canCreate = can("eip_sales_order", "create");
+  const canEdit = can("eip_sales_order", "edit");
+  const canExport = can("eip_sales_order", "export");
+  const [tab, setTab] = useState<"pending_review" | "draft" | "confirmed" | "cancelled" | "all">("pending_review");
+  const [q, setQ] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const { data: users = [] } = useAllUsers();
+  const userName = useMemo(() => new Map((users as any[]).map((u) => [u.id, u.name])), [users]);
+
+  const { data: orders = [], isLoading, error } = useQuery({
+    queryKey: ["sales-orders"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("eip_sales_order")
+        .select("*, eip_customer(name,code), eip_sales_order_line(id,needs_review)")
+        .is("deleted_at", null).order("created_at", { ascending: false }).limit(500);
+      if (error) throw error;
+      return (data ?? []) as Order[];
+    },
+  });
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: orders.length };
+    for (const o of orders) c[o.status] = (c[o.status] ?? 0) + 1;
+    return c;
+  }, [orders]);
+
+  const filtered = useMemo(() => {
+    const kw = q.trim().toLowerCase();
+    return orders.filter((o) => (tab === "all" || o.status === tab) && (!kw || [o.order_no, o.eip_customer?.name, o.customer_text, o.raw_text, o.erp_order_no].some((s) => (s ?? "").toLowerCase().includes(kw))));
+  }, [orders, tab, q]);
+
+  const createManual = async () => {
+    const { data, error } = await supabase.from("eip_sales_order").insert({ tenant_id: DEFAULT_TENANT_ID, status: "pending_review", source: "web" }).select("id").maybeSingle();
+    if (error || !data) { toast.error(error ? humanizeError(error, "新增訂單") : "新增訂單失敗：沒有權限"); return; }
+    await qc.invalidateQueries({ queryKey: ["sales-orders"] });
+    setOpenId(data.id);
+  };
+
+  const exportList = () => {
+    const rows = filtered.map((o) => ({
+      單號: o.order_no, 狀態: STATUS_META[o.status].label, 來源: o.source === "line" ? "LINE" : "網頁",
+      客戶: o.eip_customer?.name ?? `（未對應）${o.customer_text ?? ""}`, 客戶代號: o.eip_customer?.code ?? "",
+      訂單日期: o.order_date, 交貨日期: o.delivery_date ?? "", 交貨地址: o.delivery_address ?? "",
+      品項數: o.eip_sales_order_line?.length ?? 0, 凌越單號: o.erp_order_no ?? "",
+      建立者: userName.get(o.created_by ?? "") ?? "", 建立時間: fmtDT(o.created_at),
+    }));
+    const headers = ["單號", "狀態", "來源", "客戶", "客戶代號", "訂單日期", "交貨日期", "交貨地址", "品項數", "凌越單號", "建立者", "建立時間"];
+    exportToExcel({ filename: "訂單接收", sheetName: "訂單", rows, columns: headers.map((h) => ({ header: h, key: h })) });
+  };
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="訂單接收"
+        description="老闆從 LINE 傳來的訂單（文字、照片、PDF、Excel）會由 AI 整理成草稿；老闆按「送出訂單」後進入「待覆核」，由內勤在這裡對應客戶與品項主檔、補齊資料後確認。"
+        actions={<>
+          {canExport && <Button variant="outline" onClick={exportList}><Download className="h-4 w-4 mr-1.5" />匯出 Excel</Button>}
+          {canCreate && <Button onClick={createManual}><Plus className="h-4 w-4 mr-1.5" />手動新增訂單</Button>}
+        </>}
+      />
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+          <TabsList>
+            <TabsTrigger value="pending_review">待覆核 {counts.pending_review ?? 0}</TabsTrigger>
+            <TabsTrigger value="draft">草稿 {counts.draft ?? 0}</TabsTrigger>
+            <TabsTrigger value="confirmed">已確認 {counts.confirmed ?? 0}</TabsTrigger>
+            <TabsTrigger value="cancelled">已取消 {counts.cancelled ?? 0}</TabsTrigger>
+            <TabsTrigger value="all">全部 {counts.all ?? 0}</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <div className="relative w-64">
+          <Search className="h-4 w-4 absolute left-2.5 top-2.5 text-muted-foreground" />
+          <Input className="pl-8" placeholder="搜尋單號、客戶、原始訊息" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          {error ? (
+            <div className="p-6 text-destructive text-sm">{humanizeError(error, "讀取訂單")}</div>
+          ) : isLoading ? (
+            <div className="p-6 text-muted-foreground text-sm">載入中…</div>
+          ) : filtered.length === 0 ? (
+            <div className="p-10 text-center text-muted-foreground text-sm">
+              <ClipboardList className="h-8 w-8 mx-auto mb-2 opacity-60" />
+              目前沒有訂單。老闆可在 LINE 輸入「下單，客戶、品項、數量、交期」，或直接傳訂單照片／檔案。
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>單號</TableHead><TableHead>客戶</TableHead><TableHead>交貨日期</TableHead>
+                  <TableHead className="text-right">品項</TableHead><TableHead>來源</TableHead><TableHead>建立者</TableHead>
+                  <TableHead>狀態</TableHead><TableHead>建立時間</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((o) => {
+                  const warn = (o.eip_sales_order_line ?? []).filter((l) => l.needs_review).length + (o.customer_id ? 0 : 1);
+                  return (
+                    <TableRow key={o.id} className="cursor-pointer" onClick={() => setOpenId(o.id)}>
+                      <TableCell className="font-mono text-xs">{o.order_no}</TableCell>
+                      <TableCell>
+                        {o.eip_customer?.name ?? <span className="text-amber-700">⚠ {o.customer_text ?? "未指定"}</span>}
+                      </TableCell>
+                      <TableCell>{o.delivery_date ?? <span className="text-muted-foreground">未指定</span>}</TableCell>
+                      <TableCell className="text-right">
+                        {o.eip_sales_order_line?.length ?? 0}
+                        {warn > 0 && o.status !== "confirmed" && o.status !== "cancelled" && <span className="ml-1 text-amber-700 text-xs">（{warn} 待確認）</span>}
+                      </TableCell>
+                      <TableCell>{o.source === "line" ? <Badge variant="secondary">LINE</Badge> : <Badge variant="outline">網頁</Badge>}</TableCell>
+                      <TableCell>{userName.get(o.created_by ?? "") ?? "—"}</TableCell>
+                      <TableCell><span className={`text-xs px-2 py-0.5 rounded ${STATUS_META[o.status].cls}`}>{STATUS_META[o.status].label}</span></TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{fmtDT(o.created_at)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {openId && (
+        <OrderDialog
+          orderId={openId}
+          canEdit={canEdit}
+          userName={userName}
+          onClose={() => { setOpenId(null); qc.invalidateQueries({ queryKey: ["sales-orders"] }); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function OrderDialog({ orderId, canEdit, userName, onClose }: {
+  orderId: string; canEdit: boolean; userName: Map<string, string>; onClose: () => void;
+}) {
+  const { user } = useAuth();
+  const [order, setOrder] = useState<Order | null>(null);
+  const [lines, setLines] = useState<Line[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [askCancel, setAskCancel] = useState(false);
+
+  const load = async () => {
+    const [o, l, c, p, g] = await Promise.all([
+      supabase.from("eip_sales_order").select("*").eq("id", orderId).maybeSingle(),
+      supabase.from("eip_sales_order_line").select("*").eq("order_id", orderId).order("line_no"),
+      supabase.from("eip_customer").select("id,code,name,short_name,address,is_active").order("name").limit(2000),
+      supabase.from("eip_product").select("id,code,name,spec,unit,unit_price,is_active").order("name").limit(3000),
+      supabase.from("eip_sales_order_log").select("*").eq("order_id", orderId).order("created_at"),
+    ]);
+    if (o.error) { toast.error(humanizeError(o.error, "讀取訂單")); return; }
+    setOrder(o.data as Order);
+    setLines(((l.data ?? []) as Line[]));
+    setCustomers((c.data ?? []) as Customer[]);
+    setProducts((p.data ?? []) as Product[]);
+    setLogs(g.data ?? []);
+  };
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [orderId]);
+
+  const editable = !!order && order.status !== "cancelled" && order.status !== "confirmed" &&
+    (canEdit || (order.created_by === user?.id && (order.status === "draft" || order.status === "pending_review")));
+  const prodMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const total = lines.reduce((s, l) => s + (l.qty ?? 0) * (l.unit_price ?? 0), 0);
+
+  const setO = (patch: Partial<Order>) => setOrder((o) => (o ? { ...o, ...patch } : o));
+  const setL = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+
+  const save = async (silent = false): Promise<boolean> => {
+    if (!order) return false;
+    setBusy(true);
+    try {
+      const { error } = await supabase.from("eip_sales_order").update({
+        customer_id: order.customer_id, contact_name: order.contact_name, contact_phone: order.contact_phone,
+        order_date: order.order_date, delivery_date: order.delivery_date || null, delivery_address: order.delivery_address,
+        note: order.note, erp_order_no: order.erp_order_no,
+      }).eq("id", order.id);
+      if (error) throw error;
+      const { error: de } = await supabase.from("eip_sales_order_line").delete().eq("order_id", order.id);
+      if (de) throw de;
+      if (lines.length) {
+        const rows = lines.map((l, i) => ({
+          tenant_id: DEFAULT_TENANT_ID, order_id: order.id, line_no: i + 1,
+          product_id: l.product_id, product_text: l.product_text, spec: l.spec, qty: l.qty, unit: l.unit,
+          unit_price: l.unit_price, note: l.note, needs_review: !l.product_id || !(l.qty && l.qty > 0),
+        }));
+        const { error: ie } = await supabase.from("eip_sales_order_line").insert(rows);
+        if (ie) throw ie;
+      }
+      if (!silent) toast.success("已儲存");
+      await load();
+      return true;
+    } catch (e) {
+      toast.error(humanizeError(e, "儲存訂單"));
+      return false;
+    } finally { setBusy(false); }
+  };
+
+  // 已確認訂單只更新凌越單號，不動單身
+  const saveErp = async () => {
+    if (!order) return;
+    setBusy(true);
+    const { error } = await supabase.from("eip_sales_order").update({ erp_order_no: order.erp_order_no || null }).eq("id", order.id);
+    setBusy(false);
+    if (error) { toast.error(humanizeError(error, "儲存凌越單號")); return; }
+    toast.success("已儲存凌越單號");
+    await load();
+  };
+
+  const setStatus = async (status: Status, extra: Record<string, unknown> = {}) => {
+    if (!order) return;
+    if (status === "confirmed" || status === "pending_review") { if (!(await save(true))) return; }
+    setBusy(true);
+    const { error } = await supabase.from("eip_sales_order").update({ status, ...extra }).eq("id", order.id);
+    setBusy(false);
+    if (error) { toast.error(humanizeError(error, "更新訂單狀態")); return; }
+    toast.success(status === "confirmed" ? "訂單已確認，原始說法已記為別名" : status === "cancelled" ? "訂單已取消" : "已更新");
+    await load();
+  };
+
+  const addCustomerFromText = async () => {
+    if (!order?.customer_text) return;
+    const name = order.customer_text.trim();
+    const { data, error } = await supabase.from("eip_customer").insert({ tenant_id: DEFAULT_TENANT_ID, name, address: order.delivery_address }).select("id,code,name,short_name,address,is_active").maybeSingle();
+    if (error || !data) { toast.error(error ? humanizeError(error, "新增客戶") : "新增客戶失敗：沒有權限"); return; }
+    setCustomers((cs) => [...cs, data as Customer].sort((a, b) => a.name.localeCompare(b.name)));
+    setO({ customer_id: data.id });
+    toast.success(`已新增客戶「${name}」到主檔（代號請到主檔頁補上）`);
+  };
+  const addProductFromText = async (i: number) => {
+    const l = lines[i];
+    const name = (l.product_text ?? "").trim();
+    if (!name) return;
+    const { data, error } = await supabase.from("eip_product").insert({ tenant_id: DEFAULT_TENANT_ID, name, spec: l.spec, unit: l.unit, unit_price: l.unit_price }).select("id,code,name,spec,unit,unit_price,is_active").maybeSingle();
+    if (error || !data) { toast.error(error ? humanizeError(error, "新增品項") : "新增品項失敗：沒有權限"); return; }
+    setProducts((ps) => [...ps, data as Product].sort((a, b) => a.name.localeCompare(b.name)));
+    setL(i, { product_id: data.id });
+    toast.success(`已新增品項「${name}」到主檔（品號請到主檔頁補上）`);
+  };
+
+  const openAttachment = async (path: string) => {
+    const { data, error } = await supabase.storage.from("sales-order").createSignedUrl(path, 300);
+    if (error) { toast.error(humanizeError(error, "開啟附件")); return; }
+    window.open(data.signedUrl, "_blank", "noopener");
+  };
+
+  if (!order) {
+    return <Dialog open onOpenChange={(v) => !v && onClose()}><DialogContent><div className="py-8 text-center text-muted-foreground">載入中…</div></DialogContent></Dialog>;
+  }
+
+  const sel = "h-9 w-full rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60";
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            訂單 <span className="font-mono">{order.order_no}</span>
+            <span className={`text-xs px-2 py-0.5 rounded ${STATUS_META[order.status].cls}`}>{STATUS_META[order.status].label}</span>
+            {order.source === "line" && <Badge variant="secondary">LINE</Badge>}
+          </DialogTitle>
+        </DialogHeader>
+
+        {order.ai_issues?.length > 0 && order.status !== "confirmed" && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+            <div className="flex items-center gap-1.5 font-medium text-amber-900"><AlertTriangle className="h-4 w-4" />AI 標示待確認</div>
+            <ul className="list-disc pl-5 mt-1 text-amber-900 space-y-0.5">{order.ai_issues.map((s, i) => <li key={i}>{s}</li>)}</ul>
+          </div>
+        )}
+
+        <div className="grid md:grid-cols-3 gap-3">
+          <div className="md:col-span-2 space-y-1.5">
+            <Label>客戶（主檔）</Label>
+            <select className={sel} disabled={!editable} value={order.customer_id ?? ""} onChange={(e) => {
+              const c = customers.find((x) => x.id === e.target.value);
+              setO({ customer_id: e.target.value || null, delivery_address: order.delivery_address || c?.address || null });
+            }}>
+              <option value="">— 尚未對應 —</option>
+              {customers.filter((c) => c.is_active || c.id === order.customer_id).map((c) => <option key={c.id} value={c.id}>{c.code ? `${c.code}｜` : ""}{c.name}</option>)}
+            </select>
+            {order.customer_text && (
+              <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
+                原始說法：「{order.customer_text}」
+                {editable && !order.customer_id && (
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={addCustomerFromText}><UserPlus className="h-3 w-3 mr-1" />以此名稱新增客戶</Button>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="space-y-1.5"><Label>訂單日期</Label><Input type="date" disabled={!editable} value={order.order_date ?? ""} onChange={(e) => setO({ order_date: e.target.value })} /></div>
+          <div className="space-y-1.5"><Label>交貨日期</Label><Input type="date" disabled={!editable} value={order.delivery_date ?? ""} onChange={(e) => setO({ delivery_date: e.target.value || null })} /></div>
+          <div className="md:col-span-2 space-y-1.5"><Label>交貨地址</Label><Input disabled={!editable} value={order.delivery_address ?? ""} onChange={(e) => setO({ delivery_address: e.target.value })} /></div>
+          <div className="space-y-1.5"><Label>聯絡人</Label><Input disabled={!editable} value={order.contact_name ?? ""} onChange={(e) => setO({ contact_name: e.target.value })} /></div>
+          <div className="space-y-1.5"><Label>聯絡電話</Label><Input disabled={!editable} value={order.contact_phone ?? ""} onChange={(e) => setO({ contact_phone: e.target.value })} /></div>
+          <div className="space-y-1.5"><Label>凌越單號（之後同步用）</Label><Input disabled={order.status === "cancelled" || !canEdit} value={order.erp_order_no ?? ""} onChange={(e) => setO({ erp_order_no: e.target.value })} /></div>
+          <div className="md:col-span-3 space-y-1.5"><Label>備註</Label><Textarea rows={2} disabled={!editable} value={order.note ?? ""} onChange={(e) => setO({ note: e.target.value })} /></div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-base">品項明細</Label>
+            {editable && <Button size="sm" variant="outline" onClick={() => setLines((ls) => [...ls, { line_no: ls.length + 1, product_id: null, product_text: null, spec: null, qty: null, unit: null, unit_price: null, note: null, needs_review: true }])}><Plus className="h-3.5 w-3.5 mr-1" />加一項</Button>}
+          </div>
+          <div className="overflow-x-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8">#</TableHead><TableHead className="min-w-[220px]">品項（主檔）</TableHead><TableHead>規格</TableHead>
+                  <TableHead className="w-24">數量</TableHead><TableHead className="w-20">單位</TableHead><TableHead className="w-28">單價</TableHead>
+                  <TableHead>備註</TableHead><TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lines.length === 0 && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground text-sm">沒有品項</TableCell></TableRow>}
+                {lines.map((l, i) => {
+                  const bad = !l.product_id || !(l.qty && l.qty > 0);
+                  return (
+                    <TableRow key={i} className={bad && editable ? "bg-amber-50/60" : ""}>
+                      <TableCell>{i + 1}</TableCell>
+                      <TableCell>
+                        <select className={sel} disabled={!editable} value={l.product_id ?? ""} onChange={(e) => {
+                          const p = prodMap.get(e.target.value);
+                          setL(i, { product_id: e.target.value || null, unit: l.unit || p?.unit || null, unit_price: l.unit_price ?? p?.unit_price ?? null, spec: l.spec || p?.spec || null });
+                        }}>
+                          <option value="">— 尚未對應 —</option>
+                          {products.filter((p) => p.is_active || p.id === l.product_id).map((p) => <option key={p.id} value={p.id}>{p.code ? `${p.code}｜` : ""}{p.name}{p.spec ? `（${p.spec}）` : ""}</option>)}
+                        </select>
+                        {l.product_text && (
+                          <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                            原始：「{l.product_text}」
+                            {editable && !l.product_id && <button className="underline text-primary inline-flex items-center" onClick={() => addProductFromText(i)}><PackagePlus className="h-3 w-3 mr-0.5" />新增為品項</button>}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell><Input disabled={!editable} value={l.spec ?? ""} onChange={(e) => setL(i, { spec: e.target.value })} /></TableCell>
+                      <TableCell><Input disabled={!editable} inputMode="decimal" value={l.qty ?? ""} onChange={(e) => setL(i, { qty: numOrNull(e.target.value) })} /></TableCell>
+                      <TableCell><Input disabled={!editable} value={l.unit ?? ""} onChange={(e) => setL(i, { unit: e.target.value })} /></TableCell>
+                      <TableCell><Input disabled={!editable} inputMode="decimal" value={l.unit_price ?? ""} onChange={(e) => setL(i, { unit_price: numOrNull(e.target.value) })} /></TableCell>
+                      <TableCell><Input disabled={!editable} value={l.note ?? ""} onChange={(e) => setL(i, { note: e.target.value })} /></TableCell>
+                      <TableCell>{editable && <Button size="icon" variant="ghost" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          {total > 0 && <div className="text-right text-sm">小計（未稅參考）：<span className="font-semibold">{total.toLocaleString()}</span></div>}
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-3">
+          <div className="rounded-md border p-3 text-sm space-y-1.5">
+            <div className="flex items-center gap-1.5 font-medium"><MessageSquareText className="h-4 w-4" />原始內容</div>
+            <pre className="whitespace-pre-wrap text-xs text-muted-foreground max-h-48 overflow-y-auto font-sans">{order.raw_text || "（網頁手動建立）"}</pre>
+            {order.attachments?.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {order.attachments.map((a) => (
+                  <Button key={a.path} size="sm" variant="outline" className="h-7 text-xs" onClick={() => openAttachment(a.path)}><Paperclip className="h-3 w-3 mr-1" />{a.name}</Button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="rounded-md border p-3 text-sm space-y-1">
+            <div className="flex items-center gap-1.5 font-medium"><History className="h-4 w-4" />處理紀錄</div>
+            <div className="text-xs text-muted-foreground space-y-0.5 max-h-48 overflow-y-auto">
+              <div>建立：{userName.get(order.created_by ?? "") ?? "—"}｜{fmtDT(order.created_at)}</div>
+              {order.owner_confirmed_at && <div>送出覆核：{fmtDT(order.owner_confirmed_at)}</div>}
+              {order.reviewed_at && <div>確認：{userName.get(order.reviewed_by ?? "") ?? "—"}｜{fmtDT(order.reviewed_at)}</div>}
+              {order.cancelled_reason && <div>取消原因：{order.cancelled_reason}</div>}
+              {logs.map((g) => (
+                <div key={g.id}>{fmtDT(g.created_at)}｜{userName.get(g.actor_id) ?? "系統"}｜{g.action === "status" ? `狀態 ${STATUS_META[g.detail?.from as Status]?.label ?? g.detail?.from} → ${STATUS_META[g.detail?.to as Status]?.label ?? g.detail?.to}` : g.action === "created" ? "建立" : g.action === "edited" ? "修改" : g.action}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {askCancel && (
+          <div className="rounded-md border border-rose-200 bg-rose-50 p-3 space-y-2">
+            <Label>取消原因</Label>
+            <Input value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="例：客戶取消、重複下單" />
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setAskCancel(false)}>返回</Button>
+              <Button variant="destructive" disabled={busy || !cancelReason.trim()} onClick={() => setStatus("cancelled", { cancelled_reason: cancelReason.trim() })}>確定取消訂單</Button>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter className="flex-wrap gap-2">
+          {editable && !askCancel && <Button variant="outline" className="text-rose-700" onClick={() => setAskCancel(true)}><XCircle className="h-4 w-4 mr-1.5" />取消訂單</Button>}
+          {canEdit && order.status === "confirmed" && <Button variant="outline" disabled={busy} onClick={() => setStatus("pending_review")}><RotateCcw className="h-4 w-4 mr-1.5" />退回待覆核</Button>}
+          {canEdit && order.status === "confirmed" && <Button variant="outline" disabled={busy} onClick={saveErp}><Save className="h-4 w-4 mr-1.5" />儲存凌越單號</Button>}
+          {editable && <Button variant="outline" disabled={busy} onClick={() => save()}><Save className="h-4 w-4 mr-1.5" />儲存</Button>}
+          {editable && order.status === "draft" && <Button variant="secondary" disabled={busy} onClick={() => setStatus("pending_review")}>代老闆送出覆核</Button>}
+          {editable && canEdit && order.status === "pending_review" && (
+            <Button disabled={busy} onClick={() => setStatus("confirmed")}><CheckCircle2 className="h-4 w-4 mr-1.5" />覆核確認</Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
