@@ -19,6 +19,7 @@ class CleanupTests(unittest.TestCase):
         cls.port = "55439"
         cls.as_user = ["setpriv", "--reuid=1000", "--regid=1000", "--clear-groups", "--"]
         local_env = {k: v for k, v in os.environ.items() if not k.startswith("PG")}
+        cls.local_env = local_env
         subprocess.run(cls.as_user + ["initdb", "-D", cls.root + "/data", "-A", "trust", "-U", "postgres"], env=local_env, check=True, stdout=subprocess.DEVNULL)
         start = subprocess.run(cls.as_user + ["pg_ctl", "-D", cls.root + "/data", "-l", cls.root + "/server.log", "-o", f"-k {cls.root} -p {cls.port} -h ''", "-w", "start"], env=local_env, stdout=subprocess.DEVNULL)
         if start.returncode:
@@ -47,14 +48,14 @@ class CleanupTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        subprocess.run(cls.as_user + ["pg_ctl", "-D", cls.root + "/data", "-m", "immediate", "stop"], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(cls.as_user + ["pg_ctl", "-D", cls.root + "/data", "-m", "immediate", "stop"], env=cls.local_env, check=True, stdout=subprocess.DEVNULL)
         cls.directory.cleanup()
 
     @classmethod
     def sql(cls, statement, succeeds=True):
         # Explicit socket, user, port, database: ignores any hosted PG* defaults.
         result = subprocess.run(["psql", "-X", "-h", cls.root, "-p", cls.port, "-U", "postgres",
-            "-d", "postgres", "-At", "-v", "ON_ERROR_STOP=1", "-c", statement], capture_output=True, text=True)
+            "-d", "postgres", "-At", "-v", "ON_ERROR_STOP=1", "-c", statement], env=cls.local_env, capture_output=True, text=True)
         if succeeds and result.returncode:
             raise AssertionError(result.stderr)
         if not succeeds:
