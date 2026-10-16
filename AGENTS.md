@@ -29,6 +29,8 @@
 - 功能可見/可用一律讀 `can(module, action)`（來源＝role_module_permissions），**不要寫死角色代碼**。
 - 後端寫入政策用 `eip_has_perm(module, action)`，與前端 `can()` 同源，保持一致。
 
+- Install log cleanup through the SQL-only script in `scripts/`; preserve an existing comprehensive cleanup job and its policy settings to avoid dropping unrelated maintenance during migration.
+
 ## 刪除
 
 - 刪除走 `eip_soft_delete` RPC，**不要**直接 `UPDATE deleted_at`（會被 RLS 擋）。
