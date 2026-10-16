@@ -15,7 +15,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   PENDING_MINUTES, canCreateOrder, loadCatalog, parseOrder, saveDraft, draftSummary,
-  downloadLineContent, toB64, storeAttachment, addAttachment, sheetToText, taipeiToday, customerHistoryHint,
+  downloadLineContent, toB64, storeAttachment, addAttachment, sheetToText, taipeiToday, buildOrderContext,
+  orderChoices, pickLineProduct, PICK_RE, type Choice,
 } from "./order.ts";
 import {
   addDays, dateGuide, getAgenda, getSalesOrder, listTeamTasks, lookupCustomer, lookupPrice, querySalesOrders, salesSummary,
@@ -87,14 +88,15 @@ async function replyWithConfirm(sb: any, token: string, replyToken: string, text
   }, "confirm");
 }
 
-// 訂單草稿：附「送出訂單/取消訂單」按鈕
-async function replyOrder(sb: any, token: string, replyToken: string, text: string): Promise<boolean> {
+// 訂單草稿：疑問品項的候選按鈕（點一下就改）＋「送出訂單/取消訂單」；LINE 最多 13 個按鈕
+async function replyOrder(sb: any, token: string, replyToken: string, text: string, choices: Choice[] = []): Promise<boolean> {
   return await postReply(sb, token, {
     replyToken,
     messages: [{
       type: "text",
       text: text.slice(0, 4900),
       quickReply: { items: [
+        ...choices.slice(0, 11).map((c) => ({ type: "action", action: { type: "message", label: c.label.slice(0, 20), text: c.text } })),
         { type: "action", action: { type: "message", label: "✅ 送出訂單", text: "送出訂單" } },
         { type: "action", action: { type: "message", label: "✖ 取消訂單", text: "取消訂單" } },
       ] },
@@ -245,8 +247,8 @@ async function runTool(sb: any, me: Me, name: string, input: Record<string, unkn
     const text = String(input.order_text ?? "").trim();
     if (!text) return { error: "沒有訂單內容" };
     const catalog = await loadCatalog(sb, tenantId);
-    const history = await customerHistoryHint(sb, tenantId, catalog, text);
-    const parsed = await parseOrder(apiKey, catalog, { text, senderName: me.name, history });
+    const context = await buildOrderContext(sb, tenantId, catalog, text);
+    const parsed = await parseOrder(apiKey, catalog, { text, senderName: me.name, context });
     if (!parsed.is_order) return { not_order: true, 指示: "這段內容看起來不像訂單，請請使用者補充客戶、品項與數量。" };
     // 原始內容存老闆的原話（不是助理改寫過的版本），方便內勤對照
     const { orderNo } = await saveDraft(sb, me as any, parsed, catalog, { rawText: userText || text });
@@ -457,6 +459,11 @@ async function saveConvo(sb: any, me: Me, userText: string, answer: string, deli
   } catch (e) { console.error("saveConvo", e); }
 }
 
+async function draftCustomerId(sb: any, orderId: string): Promise<string | null> {
+  const { data } = await sb.from("eip_sales_order").select("customer_id").eq("id", orderId).maybeSingle();
+  return data?.customer_id ?? null;
+}
+
 async function existingDraftJson(sb: any, orderId: string) {
   const { data: o } = await sb.from("eip_sales_order").select("customer_text, delivery_date, delivery_address, note, contact_name, contact_phone, eip_customer(code,name), eip_customer_address(label)").eq("id", orderId).maybeSingle();
   const { data: ls } = await sb.from("eip_sales_order_line").select("line_no, product_text, spec, qty, unit, unit_price, price_source, note, eip_product(code,name)").eq("order_id", orderId).order("line_no");
@@ -474,8 +481,9 @@ async function handleOrderInput(sb: any, token: string | undefined, anthKey: str
 }, pendingOrderId: string | null): Promise<"handled" | "not_order"> {
   const catalog = await loadCatalog(sb, me.tenant_id);
   const existing = pendingOrderId ? await existingDraftJson(sb, pendingOrderId) : undefined;
-  const history = !pendingOrderId && input.text ? await customerHistoryHint(sb, me.tenant_id, catalog, input.text) : null;
-  const parsed = await parseOrder(anthKey, catalog, { ...input, existing, senderName: me.name, history });
+  const custId = pendingOrderId ? await draftCustomerId(sb, pendingOrderId) : null;
+  const context = await buildOrderContext(sb, me.tenant_id, catalog, input.text ?? "", custId);
+  const parsed = await parseOrder(anthKey, catalog, { ...input, existing, senderName: me.name, context });
   await logInbound(sb, me, ev, {
     text_content: input.text ?? null, file_name: input.file?.name ?? null, mime_type: input.file?.mime ?? null,
     intent: parsed.is_order ? (pendingOrderId ? "order_edit" : "order_new") : "not_order", parse_result: parsed,
@@ -487,9 +495,9 @@ async function handleOrderInput(sb: any, token: string | undefined, anthKey: str
     const att = await storeAttachment(sb, orderId, input.file.name, input.file.bytes, input.file.mime);
     if (att) await addAttachment(sb, orderId, att);
   }
-  const summary = await draftSummary(sb, orderId);
+  const [summary, choices] = await Promise.all([draftSummary(sb, orderId), orderChoices(sb, me.tenant_id, orderId, catalog)]);
   let delivered = false;
-  if (token && ev.replyToken) delivered = await replyOrder(sb, token, ev.replyToken, summary);
+  if (token && ev.replyToken) delivered = await replyOrder(sb, token, ev.replyToken, summary, choices);
   await saveConvo(sb, me, input.text ?? (input.file ? `［檔案］${input.file.name}` : "（訂單）"), summary, delivered);
   return "handled";
 }
@@ -566,6 +574,23 @@ async function handleBound(sb: any, token: string | undefined, anthKey: string |
       await saveConvo(sb, me, text, "已取消這張訂單草稿。");
       return;
     }
+    // 點了候選按鈕「第N項是 品號」：直接改那一行，不經 AI
+    const pick = text.match(PICK_RE);
+    if (pick) {
+      try {
+        const catalog = await loadCatalog(sb, me.tenant_id);
+        if (await pickLineProduct(sb, pendOrder.order_id, Number(pick[1]), pick[2], catalog)) {
+          await sb.from("line_pending_order").update({ created_at: new Date().toISOString() }).eq("user_id", me.id);
+          await logInbound(sb, me, ev, { text_content: text, intent: "order_pick", related_order_id: pendOrder.order_id });
+          const [summary, choices] = await Promise.all([draftSummary(sb, pendOrder.order_id), orderChoices(sb, me.tenant_id, pendOrder.order_id, catalog)]);
+          const delivered = token && ev.replyToken ? await replyOrder(sb, token, ev.replyToken, summary, choices) : false;
+          await saveConvo(sb, me, text, summary, delivered);
+          return;
+        }
+      } catch (e) {
+        await logMiss(sb, "line_order", `選擇品項失敗：${(e as Error).message}`);
+      }
+    }
     // 其他文字：先當成「修改草稿」解析；不是訂單內容才交給一般助理
     const isNew = /^新訂單/.test(norm);
     if (isNew) await sb.from("line_pending_order").delete().eq("user_id", me.id);
@@ -622,7 +647,11 @@ async function handleBound(sb: any, token: string | undefined, anthKey: string |
   const orderStaged = justOrder && (Date.now() - new Date(justOrder.created_at).getTime()) < 60000;
   let delivered = false;
   if (token && ev.replyToken) {
-    if (orderStaged) { answer = await draftSummary(sb, justOrder.order_id); delivered = await replyOrder(sb, token, ev.replyToken, answer); }
+    if (orderStaged) {
+      const [summary, choices] = await Promise.all([draftSummary(sb, justOrder.order_id), orderChoices(sb, me.tenant_id, justOrder.order_id)]);
+      answer = summary;
+      delivered = await replyOrder(sb, token, ev.replyToken, answer, choices);
+    }
     else if (justStaged) delivered = await replyWithConfirm(sb, token, ev.replyToken, answer);
     else delivered = await reply(sb, token, ev.replyToken, answer);
   }
