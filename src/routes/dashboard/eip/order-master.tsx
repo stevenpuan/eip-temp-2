@@ -16,6 +16,7 @@ import { CustomerDialog, type CustomerRow } from "@/components/eip/order-master/
 import { ProductDialog, type ProductRow } from "@/components/eip/order-master/ProductDialog";
 import { OrderSettingsPanel } from "@/components/eip/order-master/OrderSettingsPanel";
 import { LineTestPanel } from "@/components/eip/order-master/LineTestPanel";
+import { LearningPanel } from "@/components/eip/order-master/LearningPanel";
 import { importWorkbook, downloadTemplate, kindLabel, type ImportReport } from "@/components/eip/order-master/importMaster";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,7 @@ export const Route = createFileRoute("/dashboard/eip/order-master")({
   ),
 });
 
-type Kind = "customer" | "product" | "setting" | "line";
+type Kind = "customer" | "product" | "learn" | "setting" | "line";
 const isList = (k: Kind) => k === "customer" || k === "product";
 
 function OrderMasterPage() {
@@ -148,6 +149,7 @@ function OrderMasterPage() {
           <TabsList>
             <TabsTrigger value="customer">客戶 {customers.filter((c) => c.is_active).length}</TabsTrigger>
             <TabsTrigger value="product">品項 {products.filter((p) => p.is_active).length}</TabsTrigger>
+            <TabsTrigger value="learn">AI 學習</TabsTrigger>
             {canSetting && <TabsTrigger value="setting">訂單設定</TabsTrigger>}
             {canSetting && <TabsTrigger value="line">LINE 測試</TabsTrigger>}
           </TabsList>
@@ -161,7 +163,10 @@ function OrderMasterPage() {
         </>}
       </div>
 
-      {kind === "setting" ? <OrderSettingsPanel canEdit={canSetting} /> : kind === "line" ? <LineTestPanel /> : (
+      {kind === "setting" ? <OrderSettingsPanel canEdit={canSetting} /> : kind === "line" ? <LineTestPanel /> : kind === "learn" ? (
+        <LearningPanel customers={customers} products={products} canEdit={canEdit} canSetting={canSetting}
+          canImport={can("eip_order_master", "edit") || can("eip_order_master", "create")} />
+      ) : (
         <Card>
           <CardContent className="p-0 overflow-x-auto">
             <Table>
