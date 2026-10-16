@@ -85,7 +85,8 @@ export async function listTeamTasks(sb: any, me: ToolMe, input: Record<string, u
   }
   let q = sb.from("task").select("title, due_date, priority, progress, owner_id, task_status(name, is_done_state), project(name), app_user:owner_id(name)")
     .eq("tenant_id", me.tenant_id).is("deleted_at", null).order("due_date", { ascending: true, nullsFirst: false }).limit(500);
-  if (deptIds) q = q.in("department_id", deptIds);
+  // 主管只看部門／全公司可見的任務；「僅成員」的私密任務不給（與網頁 task_read_v2 一致，2026-10-17 總檢查）
+  if (deptIds) q = q.in("department_id", deptIds).in("visibility_scope", ["department", "company"]);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   let rows = ((data ?? []) as any[]).filter((r) => r.task_status?.is_done_state !== true || input.include_done === true);
@@ -154,7 +155,7 @@ export async function getSalesOrder(sb: any, me: ToolMe, input: Record<string, u
       .ilike("order_no", `%${safe}%`).order("created_at", { ascending: false }).limit(5);
     if (!list?.length) return { error: `找不到單號「${no}」` };
     if (list.length > 1) return { error: `「${no}」對到多張訂單：${list.map((x: any) => x.order_no).join("、")}，請說完整單號。` };
-    ({ data } = await sb.from("eip_sales_order").select(sel).eq("order_no", list[0].order_no).maybeSingle());
+    ({ data } = await sb.from("eip_sales_order").select(sel).eq("tenant_id", me.tenant_id).is("deleted_at", null).eq("order_no", list[0].order_no).maybeSingle());
   }
   const o: any = data;
   const lines = [...(o.eip_sales_order_line ?? [])].sort((a: any, b: any) => a.line_no - b.line_no);
