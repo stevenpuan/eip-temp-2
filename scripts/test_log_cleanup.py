@@ -18,7 +18,8 @@ class CleanupTests(unittest.TestCase):
         os.chmod(cls.root, 0o777)
         cls.port = "55439"
         cls.as_user = ["setpriv", "--reuid=1000", "--regid=1000", "--clear-groups", "--"]
-        subprocess.run(cls.as_user + ["initdb", "-D", cls.root + "/data", "-A", "trust", "-U", "postgres"], check=True, stdout=subprocess.DEVNULL)
+        local_env = {k: v for k, v in os.environ.items() if not k.startswith("PG")}
+        subprocess.run(cls.as_user + ["initdb", "-D", cls.root + "/data", "-A", "trust", "-U", "postgres"], env=local_env, check=True, stdout=subprocess.DEVNULL)
         subprocess.run(cls.as_user + ["pg_ctl", "-D", cls.root + "/data", "-l", cls.root + "/server.log", "-o", f"-k {cls.root} -p {cls.port} -h ''", "-w", "start"], check=True, stdout=subprocess.DEVNULL)
         cls.sql("""
           create role anon; create role authenticated; create role service_role;
