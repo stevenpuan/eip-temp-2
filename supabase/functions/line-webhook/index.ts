@@ -24,12 +24,12 @@ import {
 
 const ANTHROPIC_MODEL = "claude-sonnet-4-6";
 
+// 2026-10-17 總檢查：改用 crypto.subtle.verify（常數時間比對），不再用字串 === 比對
 async function verifySignature(secret: string, body: string, signature: string): Promise<boolean> {
   try {
-    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(mac)));
-    return b64 === signature;
+    const sig = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0));
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+    return await crypto.subtle.verify("HMAC", key, sig, new TextEncoder().encode(body));
   } catch { return false; }
 }
 
@@ -157,7 +157,9 @@ async function insertTask(sb: any, me: Me, p: { title: string; due_date: string 
   const { data, error } = await sb.from("task").insert({
     tenant_id: me.tenant_id, title: p.title, description: p.description,
     owner_id: p.owner_id ?? me.id, created_by: me.id, status_id: st.id, priority: p.priority, progress: 0,
-    due_date: p.due_date, department_id: p.department_id ?? me.department_id ?? null, visibility_scope: "company",
+    // 與網頁預設一致：有部門就只給部門看（2026-10-17 總檢查）
+    due_date: p.due_date, department_id: p.department_id ?? me.department_id ?? null,
+    visibility_scope: (p.department_id ?? me.department_id) ? "department" : "company",
   }).select("id, title").maybeSingle();
   if (error) throw new Error(error.message);
   return data;
@@ -264,9 +266,10 @@ async function runTool(sb: any, me: Me, name: string, input: Record<string, unkn
     // 2026-07-29 稽核修正：原本 dept_manager 與 company_admin 一樣拿全 tenant 的專案，
     // 比網頁端 RLS（project_read → eip_can_see_project，限自己的部門子樹）寬。
     // 改成：company_admin 看全公司；其餘＝自己負責 + 有參與 + 管轄部門子樹的專案。
+    // 2026-10-17 總檢查：私密專案（visibility_scope='members'）只有負責人與成員看得到，與網頁 eip_can_see_project 一致
     let ids: string[] = [];
     if (me.role === "company_admin") {
-      const { data } = await sb.from("project").select("id").eq("tenant_id", tenantId);
+      const { data } = await sb.from("project").select("id").eq("tenant_id", tenantId).neq("visibility_scope", "members");
       ids = (data ?? []).map((p: any) => p.id);
     } else {
       const { data: owned } = await sb.from("project").select("id").eq("tenant_id", tenantId).eq("owner_id", uid);
@@ -279,7 +282,7 @@ async function runTool(sb: any, me: Me, name: string, input: Record<string, unkn
       let deptProj: any[] = [];
       if (deptIds.length > 0) {
         const { data } = await sb.from("project").select("id")
-          .eq("tenant_id", tenantId).in("department_id", deptIds);
+          .eq("tenant_id", tenantId).in("department_id", deptIds).neq("visibility_scope", "members");
         deptProj = data ?? [];
       }
       ids = Array.from(new Set([
@@ -540,7 +543,7 @@ async function handleBound(sb: any, token: string | undefined, anthKey: string |
       if (r === "not_order") await reply(sb, token, ev.replyToken, "這份內容看起來不是訂單（沒有看到客戶或品項數量）。如果是訂單，請補一句說明，例如：「下單，王記，這張照片的品項，週五送」。");
     } catch (e) {
       await logMiss(sb, "line_order", `檔案解析失敗：${(e as Error).message}`);
-      await reply(sb, token, ev.replyToken, `檔案處理失敗：${(e as Error).message}`);
+      await reply(sb, token, ev.replyToken, "檔案處理失敗，請確認檔案可以開啟（照片、PDF、Excel），或改傳文字。");
     }
     return;
   }
@@ -604,7 +607,7 @@ async function handleBound(sb: any, token: string | undefined, anthKey: string |
       if (r === "handled") return;
     } catch (e) {
       await logMiss(sb, "line_order", `訂單修改解析失敗：${(e as Error).message}`);
-      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, `訂單解析失敗：${(e as Error).message}`);
+      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "訂單解析暫時失敗，請稍後再試，或改用網頁「訂單接收」建立。");
       return;
     }
   } else if (pendTaskFresh) {
@@ -637,8 +640,8 @@ async function handleBound(sb: any, token: string | undefined, anthKey: string |
       const r = await handleOrderInput(sb, token, anthKey, ev, me, { text: text.replace(ORDER_PREFIX, "") || text }, null);
       if (r === "not_order" && token && ev.replyToken) await reply(sb, token, ev.replyToken, "沒有看懂這張訂單，請至少說明：客戶、品項、數量（交期可之後補）。例如：「下單，王記，原味 10 箱、綠茶 5 箱，週五送」。");
     } catch (e) {
-      await logMiss(sb, "line_order", `訂單解析失敗：${(e as Error).message}`);
-      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, `訂單解析失敗：${(e as Error).message}`);
+      await logMiss(sb, "line_order", "訂單解析暫時失敗，請稍後再試，或改用網頁「訂單接收」建立。");
+      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "訂單解析暫時失敗，請稍後再試，或改用網頁「訂單接收」建立。");
     }
     return;
   }
@@ -653,7 +656,7 @@ async function handleBound(sb: any, token: string | undefined, anthKey: string |
         if (r === "handled") return;
       } catch (e) {
         await logMiss(sb, "line_order", `照舊下單解析失敗：${(e as Error).message}`);
-        if (token && ev.replyToken) await reply(sb, token, ev.replyToken, `訂單解析失敗：${(e as Error).message}`);
+        if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "訂單解析暫時失敗，請稍後再試，或改用網頁「訂單接收」建立。");
         return;
       }
     }
@@ -692,15 +695,22 @@ async function handleEvent(sb: any, token: string | undefined, anthKey: string |
     return;
   }
   if (ev.type !== "message") return;
+  // 2026-10-17 總檢查：只處理一對一聊天；機器人被拉進群組時不回覆（避免把業績、客戶資料回在群組裡）
+  if (ev?.source?.type && ev.source.type !== "user") return;
   const mtype = String(ev?.message?.type ?? "");
 
   const { data: me, error: meErr } = await sb.from("app_user")
-    .select("id, name, tenant_id, role, department_id, line_user_id")
+    .select("id, name, tenant_id, role, department_id, line_user_id, status")
     .eq("line_user_id", lineUserId).maybeSingle();
   // 同一個 line_user_id 若意外掛在多人身上，maybeSingle 會報錯；此時不可退回「當綁定碼處理」（M14）
   if (meErr) {
     await logMiss(sb, "line_bind", `line_user_id 查詢失敗（可能重複綁定）：${meErr.message}`);
     if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "帳號綁定狀態異常，請聯絡管理者處理。");
+    return;
+  }
+  // 停用（離職）帳號：不再提供任何查詢或下單（2026-10-17 總檢查 H1）
+  if (me && me.status !== "active") {
+    if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "此 LINE 綁定的 EIP 帳號已停用，無法使用助理。如有疑問請聯絡管理者。");
     return;
   }
   if (me) { await handleBound(sb, token, anthKey, ev, me as Me & { line_user_id?: string }); return; }
@@ -711,9 +721,14 @@ async function handleEvent(sb: any, token: string | undefined, anthKey: string |
   const text = String(ev.message.text || "").trim();
 
   const code = text.toUpperCase();
-  const { data: bc } = await sb.from("line_bind_code").select("id,user_id,expires_at,used_at").eq("code", code).maybeSingle();
-  if (!bc) { if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "找不到此綁定碼。請到 EIP「個人設定 → 綁定 LINE」重新產生，或先完成綁定後再向我提問。"); return; }
-  if (bc.used_at || new Date(bc.expires_at).getTime() < Date.now()) { if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "綁定碼已使用或已過期，請重新產生。"); return; }
+  if (!/^[A-Z0-9]{4,16}$/.test(code)) { if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "請先完成綁定：到 EIP「個人設定 → 綁定 LINE」取得綁定碼，輸入到此聊天室。"); return; }
+  // 2026-10-17 總檢查：「查碼＋標記已使用」改成同一個動作，避免同一組碼被兩個 LINE 帳號同時使用
+  const { data: bc } = await sb.from("line_bind_code").update({ used_at: new Date().toISOString() })
+    .eq("code", code).is("used_at", null).gt("expires_at", new Date().toISOString())
+    .select("id,user_id").maybeSingle();
+  if (!bc) { if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "找不到此綁定碼，或已使用／已過期。請到 EIP「個人設定 → 綁定 LINE」重新產生。"); return; }
+  const { data: target } = await sb.from("app_user").select("status").eq("id", bc.user_id).maybeSingle();
+  if (target?.status !== "active") { if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "這個 EIP 帳號目前無法綁定，請聯絡管理者。"); return; }
   // 先解除這個 LINE 帳號在別人身上的綁定，避免一個 line_user_id 對到兩位員工（M14）
   await sb.from("app_user").update({ line_user_id: null })
     .eq("line_user_id", lineUserId).neq("id", bc.user_id);
@@ -723,7 +738,6 @@ async function handleEvent(sb: any, token: string | undefined, anthKey: string |
     if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "綁定失敗，請稍後再試或聯絡管理者。");
     return;
   }
-  await sb.from("line_bind_code").update({ used_at: new Date().toISOString() }).eq("id", bc.id);
   if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "✅ 綁定成功！之後重要提醒會推送到這裡。你也可以直接問我：『我今天有什麼要做?』『今天行事曆?』，或說『幫我建立任務：…』直接下任務到看板。");
 }
 
