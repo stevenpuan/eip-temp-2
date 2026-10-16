@@ -5,7 +5,7 @@
 //   2. 伺服器端再用主檔做一次「確定性比對」（代號／名稱／別名／相近字），AI 給的對應只當參考
 //   3. 建立 eip_sales_order（status=draft）＋單身，記一筆 line_pending_order，回覆草稿摘要＋按鈕
 //   4. 老闆回「確認訂單」→ status=pending_review（觸發器通知有覆核權的內勤）
-//      直接打字＝修改草稿（例：第2項排20箱、交期改週五），「取消訂單」＝作廢
+//      直接打字＝修改草稿（例：第2項改20箱、交期改週五），「取消訂單」＝作廢
 // 安全：service_role 繞過 RLS，權限一律以 eip_user_has_perm(使用者, 'eip_sales_order', 'create') 自行把關。
 
 export const ORDER_MODEL = "claude-sonnet-4-6";
@@ -148,7 +148,7 @@ export async function parseOrder(apiKey: string, catalog: { customers: Cust[]; p
     `4. 價格只有明確講到才填。\n` +
     `5. 看不清楚、語意不明或互相矛盾的地方，該行 uncertain=true，並寫進 issues。寧可標示待確認，也不要猜。\n` +
     `6. 一則訊息若有多個品項，逐項拆成 lines；同一品項不同規格分開列。\n` +
-    `7. 若提供了「目前草稿」，代表老闆是在修改那張草稿：以草稿為基礎套用這次的修改（例：「第2項排20箱」「交期改週五」「再加3箱綠茶」「刪掉第1項」），回傳修改後的完整訂單。\n` +
+    `7. 若提供了「目前草稿」，代表老闆是在修改那張草稿：以草稿為基礎套用這次的修改（例：「第2項改20箱」「交期改週五」「再加3箱綠茶」「刪掉第1項」），回傳修改後的完整訂單。\n` +
     `8. 若提供了「目前草稿」，但這次訊息跟這張訂單無關（例如問行事曆、交辦任務、閒聊），is_order 填 false。\n\n` +
     catalogText(catalog.customers, catalog.products);
 
@@ -286,7 +286,7 @@ export async function draftSummary(sb: any, orderId: string): Promise<string> {
     ...(o?.note ? [`備註：${o.note}`] : []),
     ...(issues.length ? ["", "待確認：", ...issues.slice(0, 6).map((s) => "・" + s)] : []),
     "",
-    "按「送出訂單」交給內勤覆核；要修改直接打字（例：第2項排20箱、交期改週五）。",
+    "按「送出訂單」交給內勤覆核；要修改直接打字（例：第2項改20箱、交期改週五）。",
   ].join("\n");
 }
 
