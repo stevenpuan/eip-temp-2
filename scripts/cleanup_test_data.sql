@@ -84,6 +84,16 @@ begin
   delete from public.department where id = any(td) and parent_id is not null;
   delete from public.department where id = any(td);
 
+  -- 訂單接收：測試訂單與 [測試] 主檔（上線前清空訂單；主檔只刪 [測試] 開頭的）
+  delete from public.notification where entity_type = 'sales_order';
+  delete from public.line_pending_order;
+  delete from public.line_inbound_message;
+  delete from public.eip_sales_order_log;
+  delete from public.eip_sales_order_line;
+  delete from public.eip_sales_order;
+  delete from public.eip_customer where name like '[測試]%';
+  delete from public.eip_product where name like '[測試]%';
+
   rep := format('剩餘：測試帳號=%s 測試部門=%s 任務=%s 專案=%s 會議=%s 公告=%s 回報=%s 缺失=%s 日誌=%s ｜保留：syichg=%s A0001=%s 通知規則=%s',
     (select count(*) from public.app_user where employee_no ~ '^T00[0-9]$'),
     (select count(*) from public.department where code like 'T-%'),
