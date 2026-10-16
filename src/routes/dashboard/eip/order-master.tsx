@@ -3,21 +3,22 @@ import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { Database, Plus, Search, Download, Upload, FileSpreadsheet, Pencil } from "lucide-react";
+import { Database, Plus, Search, Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 // 新資料表尚未進 src/integrations/supabase/types.ts，這裡用 any 版 client。
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
-import { DEFAULT_TENANT_ID } from "@/lib/eip-constants";
-import { exportToExcel } from "@/lib/eip-export";
-import { humanizeError } from "@/lib/eip-error";
+import { useAllUsers } from "@/hooks/useUsers";
+import { TAX_TYPE_SHORT, money, type TaxType } from "@/lib/sales-order";
 import { RequirePerm } from "@/components/RequirePerm";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { CustomerDialog, type CustomerRow } from "@/components/eip/order-master/CustomerDialog";
+import { ProductDialog, type ProductRow } from "@/components/eip/order-master/ProductDialog";
+import { OrderSettingsPanel } from "@/components/eip/order-master/OrderSettingsPanel";
+import { importWorkbook, downloadTemplate, kindLabel, type ImportReport } from "@/components/eip/order-master/importMaster";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,136 +33,62 @@ export const Route = createFileRoute("/dashboard/eip/order-master")({
   ),
 });
 
-type Kind = "customer" | "product";
-type FieldDef = { key: string; header: string; type?: "text" | "number" | "aliases" | "textarea"; required?: boolean };
-
-// 欄位定義同時用於：表單、Excel 範本、匯入、匯出（header 即 Excel 欄名）
-const FIELDS: Record<Kind, FieldDef[]> = {
-  customer: [
-    { key: "code", header: "客戶代號" },
-    { key: "name", header: "客戶名稱", required: true },
-    { key: "short_name", header: "簡稱" },
-    { key: "aliases", header: "別名（逗號分隔）", type: "aliases" },
-    { key: "contact_name", header: "聯絡人" },
-    { key: "phone", header: "電話" },
-    { key: "address", header: "送貨地址" },
-    { key: "note", header: "備註", type: "textarea" },
-  ],
-  product: [
-    { key: "code", header: "品號" },
-    { key: "name", header: "品名", required: true },
-    { key: "spec", header: "規格" },
-    { key: "unit", header: "單位" },
-    { key: "unit_price", header: "單價", type: "number" },
-    { key: "aliases", header: "別名（逗號分隔）", type: "aliases" },
-    { key: "note", header: "備註", type: "textarea" },
-  ],
-};
-const TABLE: Record<Kind, string> = { customer: "eip_customer", product: "eip_product" };
-const LABEL: Record<Kind, string> = { customer: "客戶", product: "品項" };
-
-type Row = Record<string, unknown> & { id: string; is_active: boolean; aliases: string[] | null; code: string | null; name: string };
-
-const splitAliases = (v: unknown) =>
-  String(v ?? "").split(/[,，、;；\n]/).map((s) => s.trim()).filter(Boolean);
+type Kind = "customer" | "product" | "setting";
 
 function OrderMasterPage() {
   const { can } = useAuth();
   const qc = useQueryClient();
+  const { data: users = [] } = useAllUsers();
+  const userName = useMemo(() => new Map((users as any[]).map((u) => [u.id, u.name])), [users]);
   const [kind, setKind] = useState<Kind>("customer");
   const [q, setQ] = useState("");
   const [showInactive, setShowInactive] = useState(false);
-  const [editing, setEditing] = useState<Row | "new" | null>(null);
+  const [editing, setEditing] = useState<{ kind: "customer" | "product"; row: any | null } | null>(null);
   const [importing, setImporting] = useState(false);
+  const [report, setReport] = useState<ImportReport | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // 內勤（訂單接收 edit 權限）也能新增/編輯主檔，與 RLS 一致
   const canCreate = can("eip_order_master", "create") || can("eip_sales_order", "edit");
   const canEdit = can("eip_order_master", "edit") || can("eip_sales_order", "edit");
   const canExport = can("eip_order_master", "export");
+  const canSetting = can("eip_order_master", "edit");
 
-  const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["order-master", kind],
+  const { data: customers = [], isLoading: lc } = useQuery({
+    queryKey: ["order-master", "customer"],
     queryFn: async () => {
-      const { data, error } = await supabase.from(TABLE[kind]).select("*").order("code", { ascending: true, nullsFirst: false }).order("name");
+      const { data, error } = await supabase.from("eip_customer").select("*, eip_customer_address(id), eip_customer_price(id,source)").order("code", { ascending: true, nullsFirst: false }).order("name").limit(5000);
       if (error) throw error;
-      return (data ?? []) as Row[];
+      return (data ?? []) as CustomerRow[];
     },
   });
+  const { data: products = [], isLoading: lp } = useQuery({
+    queryKey: ["order-master", "product"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("eip_product").select("*, eip_product_unit(unit,ratio)").order("code", { ascending: true, nullsFirst: false }).order("name").limit(5000);
+      if (error) throw error;
+      return (data ?? []) as ProductRow[];
+    },
+  });
+  const refresh = () => void qc.invalidateQueries({ queryKey: ["order-master"] });
 
-  const filtered = useMemo(() => {
+  const match = (r: any, keys: string[]) => {
     const kw = q.trim().toLowerCase();
-    return rows.filter((r) => (showInactive || r.is_active) && (!kw ||
-      [r.code, r.name, r.short_name, r.spec, ...(r.aliases ?? [])].some((s) => String(s ?? "").toLowerCase().includes(kw))));
-  }, [rows, q, showInactive]);
-
-  const fields = FIELDS[kind];
-
-  const toExcelRow = (r: Row) => {
-    const o: Record<string, unknown> = {};
-    fields.forEach((f) => { o[f.header] = f.type === "aliases" ? (r.aliases ?? []).join(",") : (r[f.key] ?? ""); });
-    o["啟用"] = r.is_active ? "Y" : "N";
-    return o;
+    return (showInactive || r.is_active) && (!kw || [...keys.map((k) => r[k]), ...(r.aliases ?? [])].some((s) => String(s ?? "").toLowerCase().includes(kw)));
   };
-  const headers = [...fields.map((f) => f.header), "啟用"];
+  const fc = useMemo(() => customers.filter((r) => match(r, ["code", "name", "short_name", "tax_id", "contact_name", "phone", "region"])), [customers, q, showInactive]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fp = useMemo(() => products.filter((r) => match(r, ["code", "name", "spec", "category", "barcode"])), [products, q, showInactive]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const exportList = () => {
-    exportToExcel({ filename: `${LABEL[kind]}主檔`, sheetName: LABEL[kind], rows: filtered.map(toExcelRow), columns: headers.map((h) => ({ header: h, key: h })) });
-  };
+  // 完整度：缺交易條件的客戶，下單時預設值會帶不全
+  const incomplete = useMemo(() => customers.filter((c) => c.is_active && (!c.payment_terms || !(c.address || c.eip_customer_address?.length))).length, [customers]);
+  const noPrice = useMemo(() => products.filter((p) => p.is_active && p.unit_price == null).length, [products]);
 
-  const downloadTemplate = () => {
-    const sample: Record<Kind, Record<string, unknown>> = {
-      customer: { 客戶代號: "C001", 客戶名稱: "範例食品行", 簡稱: "範例", "別名（逗號分隔）": "老范,范記", 聯絡人: "王先生", 電話: "02-1234-5678", 送貨地址: "台北市…", 備註: "", 啟用: "Y" },
-      product: { 品號: "P001", 品名: "範例商品", 規格: "500g×12", 單位: "箱", 單價: 1200, "別名（逗號分隔）": "原味,小包", 備註: "", 啟用: "Y" },
-    };
-    const ws = XLSX.utils.json_to_sheet([sample[kind]], { header: headers });
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, LABEL[kind]);
-    XLSX.writeFile(wb, `${LABEL[kind]}主檔_匯入範本.xlsx`);
-  };
-
-  // Excel 匯入：有代號 → 依代號更新或新增；無代號 → 依名稱比對更新或新增
   const onImport = async (file: File) => {
     setImporting(true);
     try {
-      const wb = XLSX.read(await file.arrayBuffer());
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
-      const nameField = fields.find((f) => f.required)!;
-      const byCode = new Map(rows.filter((r) => r.code).map((r) => [String(r.code).trim(), r.id]));
-      const byName = new Map(rows.map((r) => [r.name.trim(), r.id]));
-      let ins = 0, upd = 0, skip = 0;
-      const errors: string[] = [];
-      const inserts: Record<string, unknown>[] = [];
-      for (const [i, raw] of json.entries()) {
-        const rec: Record<string, unknown> = {};
-        for (const f of fields) {
-          // 容許欄名寫成「別名」而非「別名（逗號分隔）」
-          const v = raw[f.header] ?? raw[f.header.replace(/（.*）/, "")];
-          if (v === undefined) continue;
-          if (f.type === "aliases") rec[f.key] = splitAliases(v);
-          else if (f.type === "number") rec[f.key] = String(v).trim() === "" ? null : Number(String(v).replace(/,/g, ""));
-          else rec[f.key] = String(v).trim() || null;
-        }
-        if ("啟用" in raw) rec.is_active = !/^(n|no|否|停用|0|false)$/i.test(String(raw["啟用"]).trim());
-        if (!rec[nameField.key]) { skip++; continue; }
-        if (rec.unit_price !== undefined && rec.unit_price !== null && Number.isNaN(rec.unit_price)) { errors.push(`第 ${i + 2} 列單價不是數字`); continue; }
-        const id = (rec.code && byCode.get(String(rec.code))) || byName.get(String(rec[nameField.key]));
-        if (id) {
-          const { error } = await supabase.from(TABLE[kind]).update(rec).eq("id", id);
-          if (error) errors.push(`第 ${i + 2} 列：${humanizeError(error, "更新")}`); else upd++;
-        } else {
-          inserts.push({ ...rec, tenant_id: DEFAULT_TENANT_ID });
-        }
-      }
-      for (let i = 0; i < inserts.length; i += 200) {
-        const chunk = inserts.slice(i, i + 200);
-        const { error } = await supabase.from(TABLE[kind]).insert(chunk);
-        if (error) errors.push(humanizeError(error, "新增")); else ins += chunk.length;
-      }
-      await qc.invalidateQueries({ queryKey: ["order-master", kind] });
-      toast.success(`匯入完成：新增 ${ins} 筆、更新 ${upd} 筆${skip ? `、略過空白 ${skip} 筆` : ""}`);
-      if (errors.length) toast.error(errors.slice(0, 5).join("\n") + (errors.length > 5 ? `\n…共 ${errors.length} 個錯誤` : ""));
+      const rep = await importWorkbook(file, { onlyKind: kind === "product" ? "product" : "customer", users: users as any[] });
+      setReport(rep);
+      refresh();
     } catch (e) {
       toast.error(`匯入失敗：${(e as Error).message}`);
     } finally {
@@ -170,151 +97,149 @@ function OrderMasterPage() {
     }
   };
 
+  const exportAll = async () => {
+    const wb = XLSX.utils.book_new();
+    const sheet = (name: string, rows: Record<string, unknown>[]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{}]), name);
+    sheet("客戶", customers.map((c) => ({
+      客戶代號: c.code ?? "", 客戶名稱: c.name, 簡稱: c.short_name ?? "", 別名: (c.aliases ?? []).join(","), 統一編號: c.tax_id ?? "", 發票抬頭: c.invoice_title ?? "",
+      發票地址: c.invoice_address ?? "", 聯絡人: c.contact_name ?? "", 電話: c.phone ?? "", 傳真: c.fax ?? "", Email: c.email ?? "", 送貨地址: c.address ?? "",
+      付款條件: c.payment_terms ?? "", 稅別: c.tax_type ? TAX_TYPE_SHORT[c.tax_type as TaxType] : "", 客戶類別: c.customer_type ?? "", 區域: c.region ?? "",
+      配送路線: c.delivery_route ?? "", 信用額度: c.credit_limit ?? "", 交期天數: c.delivery_lead_days ?? "", 收貨時段: c.delivery_time_window ?? "",
+      送貨注意事項: c.delivery_note ?? "", 業務: userName.get(c.sales_owner_id) ?? "", 備註: c.note ?? "", 啟用: c.is_active ? "Y" : "N",
+    })));
+    const { data: addrs } = await supabase.from("eip_customer_address").select("*, eip_customer(code,name)").order("customer_id");
+    sheet("送貨地址", (addrs ?? []).map((a: any) => ({ 客戶代號: a.eip_customer?.code || a.eip_customer?.name, 地點名稱: a.label, 地址: a.address, 收貨人: a.receiver_name ?? "", 收貨電話: a.receiver_phone ?? "", 收貨時段: a.delivery_time_window ?? "", 預設: a.is_default ? "Y" : "N", 備註: a.note ?? "" })));
+    sheet("品項", products.map((p) => ({ 品號: p.code ?? "", 品名: p.name, 規格: p.spec ?? "", 單位: p.unit ?? "", 單價: p.unit_price ?? "", 類別: p.category ?? "", 條碼: p.barcode ?? "", 包裝: p.pack_desc ?? "", 最小訂量: p.min_order_qty ?? "", 別名: (p.aliases ?? []).join(","), 備註: p.note ?? "", 啟用: p.is_active ? "Y" : "N" })));
+    const { data: units } = await supabase.from("eip_product_unit").select("*, eip_product(code,name)");
+    sheet("品項單位", (units ?? []).map((u: any) => ({ 品號: u.eip_product?.code || u.eip_product?.name, 單位: u.unit, 換算率: u.ratio, 單價: u.unit_price ?? "", 條碼: u.barcode ?? "" })));
+    const { data: prices } = await supabase.from("eip_customer_price").select("*, eip_customer(code,name), eip_product(code,name)").eq("source", "contract");
+    sheet("客戶價格", (prices ?? []).map((p: any) => ({ 客戶代號: p.eip_customer?.code || p.eip_customer?.name, 品號: p.eip_product?.code || p.eip_product?.name, 單位: p.unit ?? "", 單價: p.unit_price, 生效日: p.valid_from ?? "", 到期日: p.valid_to ?? "", 備註: p.note ?? "" })));
+    const d = new Date();
+    XLSX.writeFile(wb, `客戶品項主檔_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}.xlsx`);
+  };
+
   return (
     <div className="space-y-5">
       <PageHeader
         title="客戶／品項主檔"
-        description="LINE 訂單會用這裡的名稱、簡稱與別名自動比對客戶與品項。內勤覆核確認時，老闆的講法會自動學成別名，越用越準。"
+        description="下單時的預設值都從這裡帶：客戶的送貨地址、聯絡人、付款條件、稅別、交期，以及專屬價／最近成交價／牌價。LINE 訂單也用這裡的名稱、簡稱、別名與分店比對。"
         actions={<>
           {canCreate && <Button variant="outline" onClick={downloadTemplate}><FileSpreadsheet className="h-4 w-4 mr-1.5" />下載匯入範本</Button>}
           {canCreate && canEdit && <>
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => e.target.files?.[0] && onImport(e.target.files[0])} />
             <Button variant="outline" disabled={importing} onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-1.5" />{importing ? "匯入中…" : "匯入 Excel"}</Button>
           </>}
-          {canExport && <Button variant="outline" onClick={exportList}><Download className="h-4 w-4 mr-1.5" />匯出 Excel</Button>}
-          {canCreate && <Button onClick={() => setEditing("new")}><Plus className="h-4 w-4 mr-1.5" />新增{LABEL[kind]}</Button>}
+          {canExport && <Button variant="outline" onClick={exportAll}><Download className="h-4 w-4 mr-1.5" />匯出全部</Button>}
+          {canCreate && kind !== "setting" && <Button onClick={() => setEditing({ kind, row: null })}><Plus className="h-4 w-4 mr-1.5" />新增{kind === "customer" ? "客戶" : "品項"}</Button>}
         </>}
       />
+
+      {(incomplete > 0 || noPrice > 0) && kind !== "setting" && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          資料完整度：{incomplete > 0 && <>{incomplete} 家客戶缺付款條件或送貨地址；</>}{noPrice > 0 && <>{noPrice} 個品項沒有牌價；</>}下單時這些預設值會帶不出來。
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <Tabs value={kind} onValueChange={(v) => { setKind(v as Kind); setQ(""); }}>
           <TabsList>
-            <TabsTrigger value="customer">客戶</TabsTrigger>
-            <TabsTrigger value="product">品項</TabsTrigger>
+            <TabsTrigger value="customer">客戶 {customers.filter((c) => c.is_active).length}</TabsTrigger>
+            <TabsTrigger value="product">品項 {products.filter((p) => p.is_active).length}</TabsTrigger>
+            {canSetting && <TabsTrigger value="setting">訂單設定</TabsTrigger>}
           </TabsList>
         </Tabs>
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-8" placeholder="搜尋代號、名稱、別名" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Switch checked={showInactive} onCheckedChange={setShowInactive} />顯示已停用
-        </label>
-        <span className="text-sm text-muted-foreground">共 {filtered.length} 筆</span>
+        {kind !== "setting" && <>
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input className="pl-8" placeholder="搜尋代號、名稱、別名、統編、電話" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-muted-foreground"><Switch checked={showInactive} onCheckedChange={setShowInactive} />顯示已停用</label>
+        </>}
       </div>
 
-      <Card>
-        <CardContent className="p-0 overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {kind === "customer" ? <>
-                  <TableHead className="w-24">代號</TableHead><TableHead>名稱</TableHead><TableHead>簡稱</TableHead>
-                  <TableHead>別名</TableHead><TableHead>聯絡人／電話</TableHead><TableHead>送貨地址</TableHead>
-                </> : <>
-                  <TableHead className="w-24">品號</TableHead><TableHead>品名</TableHead><TableHead>規格</TableHead>
-                  <TableHead>單位</TableHead><TableHead className="text-right">單價</TableHead><TableHead>別名</TableHead>
-                </>}
-                <TableHead className="w-20">狀態</TableHead>
-                <TableHead className="w-12" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">載入中…</TableCell></TableRow>}
-              {!isLoading && filtered.length === 0 && (
-                <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-10">
-                  <Database className="h-8 w-8 mx-auto mb-2 opacity-40" />尚無{LABEL[kind]}資料，可用「匯入 Excel」一次匯入，或在覆核訂單時順手新增。
-                </TableCell></TableRow>
-              )}
-              {filtered.map((r) => (
-                <TableRow key={r.id} className={r.is_active ? "" : "opacity-50"}>
-                  <TableCell className="font-mono text-xs">{r.code ?? "—"}</TableCell>
-                  <TableCell className="font-medium">{r.name}</TableCell>
+      {kind === "setting" ? <OrderSettingsPanel canEdit={canSetting} /> : (
+        <Card>
+          <CardContent className="p-0 overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
                   {kind === "customer" ? <>
-                    <TableCell>{String(r.short_name ?? "")}</TableCell>
-                    <TableCell><Aliases list={r.aliases} /></TableCell>
-                    <TableCell className="text-sm">{[r.contact_name, r.phone].filter(Boolean).join(" / ")}</TableCell>
-                    <TableCell className="text-sm max-w-[240px] truncate">{String(r.address ?? "")}</TableCell>
+                    <TableHead className="w-24">代號</TableHead><TableHead>名稱</TableHead><TableHead>統編</TableHead><TableHead>付款條件</TableHead>
+                    <TableHead>稅別</TableHead><TableHead>聯絡人／電話</TableHead><TableHead className="text-center">地址</TableHead><TableHead className="text-center">專屬價</TableHead><TableHead>業務</TableHead>
                   </> : <>
-                    <TableCell className="text-sm">{String(r.spec ?? "")}</TableCell>
-                    <TableCell>{String(r.unit ?? "")}</TableCell>
-                    <TableCell className="text-right tabular-nums">{r.unit_price != null ? Number(r.unit_price).toLocaleString() : ""}</TableCell>
-                    <TableCell><Aliases list={r.aliases} /></TableCell>
+                    <TableHead className="w-24">品號</TableHead><TableHead>品名</TableHead><TableHead>規格</TableHead><TableHead>類別</TableHead>
+                    <TableHead>單位</TableHead><TableHead className="text-right">牌價</TableHead><TableHead>其他單位</TableHead><TableHead>別名</TableHead>
                   </>}
-                  <TableCell>{r.is_active ? <Badge variant="outline" className="text-emerald-700">啟用</Badge> : <Badge variant="outline">停用</Badge>}</TableCell>
-                  <TableCell>{canEdit && <Button size="icon" variant="ghost" onClick={() => setEditing(r)}><Pencil className="h-4 w-4" /></Button>}</TableCell>
+                  <TableHead className="w-16">狀態</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {(kind === "customer" ? lc : lp) && <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">載入中…</TableCell></TableRow>}
+                {!(kind === "customer" ? lc : lp) && (kind === "customer" ? fc : fp).length === 0 && (
+                  <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-10">
+                    <Database className="h-8 w-8 mx-auto mb-2 opacity-40" />尚無資料。建議先「下載匯入範本」，把凌越匯出的客戶／品項資料貼進去後一次匯入。
+                  </TableCell></TableRow>
+                )}
+                {kind === "customer" && fc.map((r) => {
+                  const nContract = (r.eip_customer_price ?? []).filter((p: any) => p.source === "contract").length;
+                  return (
+                    <TableRow key={r.id} className={`cursor-pointer ${r.is_active ? "" : "opacity-50"}`} onClick={() => setEditing({ kind: "customer", row: r })}>
+                      <TableCell className="font-mono text-xs">{r.code ?? "—"}</TableCell>
+                      <TableCell><div className="font-medium">{r.name}</div>{r.short_name && <div className="text-xs text-muted-foreground">{r.short_name}</div>}</TableCell>
+                      <TableCell className="text-xs">{r.tax_id ?? ""}</TableCell>
+                      <TableCell className="text-sm">{r.payment_terms ?? <span className="text-amber-700 text-xs">未設定</span>}</TableCell>
+                      <TableCell className="text-sm">{r.tax_type ? TAX_TYPE_SHORT[r.tax_type as TaxType] : <span className="text-muted-foreground text-xs">預設</span>}</TableCell>
+                      <TableCell className="text-sm">{[r.contact_name, r.phone].filter(Boolean).join(" / ")}</TableCell>
+                      <TableCell className="text-center text-sm">{(r.eip_customer_address ?? []).length || (r.address ? 1 : <span className="text-amber-700 text-xs">無</span>)}</TableCell>
+                      <TableCell className="text-center text-sm">{nContract || ""}</TableCell>
+                      <TableCell className="text-sm">{userName.get(r.sales_owner_id) ?? ""}</TableCell>
+                      <TableCell>{r.is_active ? <Badge variant="outline" className="text-emerald-700">啟用</Badge> : <Badge variant="outline">停用</Badge>}</TableCell>
+                    </TableRow>
+                  );
+                })}
+                {kind === "product" && fp.map((r) => (
+                  <TableRow key={r.id} className={`cursor-pointer ${r.is_active ? "" : "opacity-50"}`} onClick={() => setEditing({ kind: "product", row: r })}>
+                    <TableCell className="font-mono text-xs">{r.code ?? "—"}</TableCell>
+                    <TableCell className="font-medium">{r.name}</TableCell>
+                    <TableCell className="text-sm">{r.spec ?? ""}</TableCell>
+                    <TableCell className="text-sm">{r.category ?? ""}</TableCell>
+                    <TableCell>{r.unit ?? ""}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.unit_price != null ? money(r.unit_price) : <span className="text-amber-700 text-xs">未設定</span>}</TableCell>
+                    <TableCell className="text-sm">{(r.eip_product_unit ?? []).map((u: any) => u.unit).join("、")}</TableCell>
+                    <TableCell><div className="flex flex-wrap gap-1">{(r.aliases ?? []).slice(0, 4).map((a: string) => <Badge key={a} variant="secondary" className="font-normal">{a}</Badge>)}</div></TableCell>
+                    <TableCell>{r.is_active ? <Badge variant="outline" className="text-emerald-700">啟用</Badge> : <Badge variant="outline">停用</Badge>}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
-      {editing && (
-        <MasterDialog kind={kind} row={editing === "new" ? null : editing} onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); void qc.invalidateQueries({ queryKey: ["order-master", kind] }); }} />
+      {editing?.kind === "customer" && <CustomerDialog row={editing.row} canEdit={editing.row ? canEdit : canCreate} onClose={() => { setEditing(null); refresh(); }} onSaved={() => refresh()} />}
+      {editing?.kind === "product" && <ProductDialog row={editing.row} canEdit={editing.row ? canEdit : canCreate} onClose={() => { setEditing(null); refresh(); }} onSaved={() => refresh()} />}
+
+      {report && (
+        <Dialog open onOpenChange={(o) => !o && setReport(null)}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>匯入結果</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              {report.map((r) => (
+                <div key={r.sheet} className="rounded-md border p-3 text-sm">
+                  <div className="flex items-center gap-2 font-medium">
+                    {r.errors.length ? <AlertTriangle className="h-4 w-4 text-amber-600" /> : <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
+                    工作表「{r.sheet}」→ {kindLabel(r.kind)}
+                  </div>
+                  <div className="text-muted-foreground mt-1">新增 {r.inserted}、更新 {r.updated}{r.skipped ? `、略過空白 ${r.skipped}` : ""}{r.errors.length ? `、需注意 ${r.errors.length}` : ""}</div>
+                  {r.errors.length > 0 && <ul className="mt-1 list-disc pl-5 text-amber-800 text-xs space-y-0.5 max-h-40 overflow-y-auto">{r.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>}
+                </div>
+              ))}
+            </div>
+            <DialogFooter><Button onClick={() => setReport(null)}>完成</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
-  );
-}
-
-function Aliases({ list }: { list: string[] | null }) {
-  if (!list?.length) return <span className="text-muted-foreground text-xs">—</span>;
-  return <div className="flex flex-wrap gap-1">{list.slice(0, 6).map((a) => <Badge key={a} variant="secondary" className="font-normal">{a}</Badge>)}{list.length > 6 && <span className="text-xs text-muted-foreground">+{list.length - 6}</span>}</div>;
-}
-
-function MasterDialog({ kind, row, onClose, onSaved }: { kind: Kind; row: Row | null; onClose: () => void; onSaved: () => void }) {
-  const fields = FIELDS[kind];
-  const [form, setForm] = useState<Record<string, string>>(() => {
-    const o: Record<string, string> = {};
-    fields.forEach((f) => { o[f.key] = f.type === "aliases" ? (row?.aliases ?? []).join(", ") : row?.[f.key] == null ? "" : String(row[f.key]); });
-    return o;
-  });
-  const [active, setActive] = useState(row?.is_active ?? true);
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    const rec: Record<string, unknown> = { is_active: active };
-    for (const f of fields) {
-      const v = form[f.key]?.trim() ?? "";
-      if (f.required && !v) { toast.error(`請填寫${f.header}`); return; }
-      if (f.type === "aliases") rec[f.key] = splitAliases(v);
-      else if (f.type === "number") {
-        if (v && Number.isNaN(Number(v.replace(/,/g, "")))) { toast.error(`${f.header}必須是數字`); return; }
-        rec[f.key] = v ? Number(v.replace(/,/g, "")) : null;
-      } else rec[f.key] = v || null;
-    }
-    setSaving(true);
-    const { error } = row
-      ? await supabase.from(TABLE[kind]).update(rec).eq("id", row.id)
-      : await supabase.from(TABLE[kind]).insert({ ...rec, tenant_id: DEFAULT_TENANT_ID });
-    setSaving(false);
-    if (error) { toast.error(humanizeError(error, `儲存${LABEL[kind]}`)); return; }
-    toast.success(`已儲存${LABEL[kind]}`);
-    onSaved();
-  };
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>{row ? `編輯${LABEL[kind]}` : `新增${LABEL[kind]}`}</DialogTitle></DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
-          {fields.map((f) => (
-            <div key={f.key} className={f.type === "aliases" || f.type === "textarea" || f.key === "address" || f.key === "name" ? "col-span-2 space-y-1" : "space-y-1"}>
-              <Label>{f.header}{f.required && <span className="text-destructive"> *</span>}</Label>
-              {f.type === "textarea"
-                ? <Textarea rows={2} value={form[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />
-                : <Input inputMode={f.type === "number" ? "decimal" : undefined} value={form[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />}
-              {f.type === "aliases" && <p className="text-xs text-muted-foreground">老闆常用的講法，例如「老王」「王記那家」，用逗號分隔。</p>}
-            </div>
-          ))}
-          <label className="col-span-2 flex items-center gap-2 text-sm"><Switch checked={active} onCheckedChange={setActive} />啟用（停用後 LINE 訂單不會再比對到）</label>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button onClick={save} disabled={saving}>{saving ? "儲存中…" : "儲存"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
