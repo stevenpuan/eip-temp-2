@@ -88,11 +88,16 @@ begin
   delete from public.notification where entity_type = 'sales_order';
   delete from public.line_pending_order;
   delete from public.line_inbound_message;
+  -- AI 學習資料：測試期間自動存的範例（覆核確認／測試台）與 [測試] 客戶的範例；
+  -- [測試] 客戶的專屬說法、常訂品項、歷史銷貨會隨客戶一起刪除；凌越匯入的真實歷史與說法對照保留
+  delete from public.eip_order_example where source in ('order', 'test') or customer_id in (select id from public.eip_customer where name like '[測試]%');
   delete from public.eip_sales_order_log;
   delete from public.eip_sales_order_line;
   delete from public.eip_sales_order;
   delete from public.eip_customer where name like '[測試]%';
   delete from public.eip_product where name like '[測試]%';
+  -- 測試訂單刪掉後，常訂品項只剩凌越歷史，重新計算
+  perform public.eip_rebuild_customer_profile(s.tenant_id, null) from public.eip_sales_order_setting s;
 
   rep := format('剩餘：測試帳號=%s 測試部門=%s 任務=%s 專案=%s 會議=%s 公告=%s 回報=%s 缺失=%s 日誌=%s ｜保留：syichg=%s A0001=%s 通知規則=%s',
     (select count(*) from public.app_user where employee_no ~ '^T00[0-9]$'),
