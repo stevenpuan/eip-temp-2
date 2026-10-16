@@ -157,19 +157,23 @@ export const toTaxType = (v: unknown): TaxType | null => {
   const s = String(v ?? "").trim();
   if (!s) return null;
   if (/免/.test(s)) return "exempt";
-  if (/內含|含稅|應稅內含|^y$|是/i.test(s)) return "inclusive";
-  if (/外加|未稅|應稅|^n$|否/i.test(s)) return "exclusive";
+  if (/外加|未含稅|不含稅|未稅/.test(s)) return "exclusive"; // 先判斷「未含稅」，避免被「含稅」吃掉
+  if (/內含|含稅|^y$|^是$/i.test(s)) return "inclusive";
+  if (/應稅|^n$|^否$/i.test(s)) return "exclusive";
   return null;
 };
 
 /** Excel 日期可能是序號或字串 */
 export const toDate = (v: unknown): string | null => {
   if (v === null || v === undefined || String(v).trim() === "") return null;
-  if (typeof v === "number") {
+  if (typeof v === "number" && v < 100000) {
     const d = new Date(Math.round((v - 25569) * 864e5));
     return d.toISOString().slice(0, 10);
   }
-  const s = String(v).trim().replace(/[./]/g, "-");
+  let s = String(v).trim().replace(/[./]/g, "-");
+  // 20261020（西元 8 碼）、1151020（民國 7 碼）
+  const compact = s.match(/^(\d{3,4})(\d{2})(\d{2})$/);
+  if (compact) s = `${compact[1]}-${compact[2]}-${compact[3]}`;
   const m = s.match(/^(\d{2,4})-(\d{1,2})-(\d{1,2})/);
   if (!m) return null;
   let y = Number(m[1]); if (y < 1000) y += 1911; // 民國年
