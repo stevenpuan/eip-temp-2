@@ -38,6 +38,7 @@ const TYPE_META: Record<string, { label: string; Icon: typeof Bell; cls: string 
 // 因此標題要看 entity_type 才能正確顯示。
 const ENTITY_OVERRIDE: Record<string, Record<string, string>> = {
   leave_handover: { handover_created: "請假代辦", handover_completed: "請假代辦完成" },
+  sales_order: { review_needed: "訂單待覆核" },
 };
 const meta = (t: string, entityType?: string) => {
   const base = TYPE_META[t] ?? { label: t, Icon: Bell, cls: "bg-muted text-muted-foreground" };
@@ -110,6 +111,7 @@ function NotificationsPage() {
     else if (n.entity_type === "handover") navigate({ to: "/dashboard/eip/handover" });
     else if (n.entity_type === "leave_handover") navigate({ to: "/dashboard/eip/quick-reports" });
     else if (n.entity_type === "anomaly") navigate({ to: "/dashboard/eip/anomalies" });
+    else if (n.entity_type === "sales_order") navigate({ to: "/dashboard/eip/sales-orders" });
     else void load();
   };
 

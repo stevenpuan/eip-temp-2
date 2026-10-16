@@ -13,6 +13,10 @@
 //  M14 綁定前先清掉同一個 line_user_id 掛在別人身上的紀錄
 //  M15 search_documents 的 .or() 過濾掉 PostgREST 語法字元
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  PENDING_MINUTES, canCreateOrder, loadCatalog, parseOrder, saveDraft, draftSummary,
+  downloadLineContent, toB64, storeAttachment, addAttachment, sheetToText,
+} from "./order.ts";
 
 const ANTHROPIC_MODEL = "claude-sonnet-4-6";
 
@@ -73,6 +77,21 @@ async function replyWithConfirm(sb: any, token: string, replyToken: string, text
   }, "confirm");
 }
 
+// 訂單草稿：附「送出訂單/取消訂單」按鈕
+async function replyOrder(sb: any, token: string, replyToken: string, text: string): Promise<boolean> {
+  return await postReply(sb, token, {
+    replyToken,
+    messages: [{
+      type: "text",
+      text: text.slice(0, 4900),
+      quickReply: { items: [
+        { type: "action", action: { type: "message", label: "✅ 送出訂單", text: "送出訂單" } },
+        { type: "action", action: { type: "message", label: "✖ 取消訂單", text: "取消訂單" } },
+      ] },
+    }],
+  }, "order");
+}
+
 // 編輯距離（模糊姓名比對用）
 function lev(a: string, b: string): number {
   const m = a.length, n = b.length;
@@ -92,6 +111,7 @@ const tools = [
   { name: "get_today_agenda", description: "回傳這位員工『今天』的行事曆（個人行程，含跨日）與今天到期且未完成的任務。問『今天行事曆/今天有什麼行程/今天要做什麼/今日待辦』時用。", input_schema: { type: "object", properties: {} } },
   { name: "list_my_tasks", description: "列出這位員工本人負責的任務，可依狀態名稱或僅逾期過濾。回傳標題、狀態、所屬專案、進度、期限、優先級。", input_schema: { type: "object", properties: { status_name: { type: "string" }, overdue_only: { type: "boolean" }, limit: { type: "number" } } } },
   { name: "create_task", description: "當使用者要在 EIP 看板建立任務時呼叫（『幫我建立/新增任務』『把…加到看板』『指派給○○○』）。預設負責人為本人；要指派給別人就填 assignee（成員姓名）。title 必填；due_date 選填（YYYY-MM-DD）；priority 選填（low/normal/high/urgent）；description 選填。注意：此工具只會『暫存』並等待使用者確認，不會立即寫入；呼叫後請向使用者複述內容並詢問是否確認（回是才會建立）。", input_schema: { type: "object", properties: { title: { type: "string" }, due_date: { type: "string" }, priority: { type: "string" }, description: { type: "string" }, assignee: { type: "string" } }, required: ["title"] } },
+  { name: "create_order_draft", description: "使用者在『下訂單／客戶要貨／叫貨／幫客戶訂東西』時呼叫：把使用者描述訂單的原話完整放進 order_text（客戶、品項、數量、交期等）。系統會比對客戶與品項主檔、建立訂單草稿並附上確認按鈕；呼叫後只要簡短告訴使用者『草稿已建立，請確認』即可，不要自己重列品項。一般任務交辦請用 create_task，不要用這個。", input_schema: { type: "object", properties: { order_text: { type: "string" } }, required: ["order_text"] } },
   { name: "list_my_projects", description: "列出與這位員工相關的專案進度（主管/系統設計師看全公司、一般成員看自己負責或參與的）。每個專案回傳狀態、健康度燈號、任務完成數、里程碑達成、KPI 平均達成率、距結束天數、目標。問『專案進度/我的專案/食安專案怎麼樣了』時用。", input_schema: { type: "object", properties: { limit: { type: "number" } } } },
   { name: "list_announcements", description: "列出公司全體公告（置頂優先）。回傳標題、摘要、是否置頂、發布時間。", input_schema: { type: "object", properties: { limit: { type: "number" } } } },
   { name: "search_documents", description: "在文件中心搜尋已發布文件（標題或摘要關鍵字）。回傳標題、摘要、類型。", input_schema: { type: "object", properties: { query: { type: "string" }, limit: { type: "number" } }, required: ["query"] } },
@@ -120,7 +140,7 @@ async function insertTask(sb: any, me: Me, p: { title: string; due_date: string 
   return data;
 }
 
-async function runTool(sb: any, me: Me, name: string, input: Record<string, unknown>): Promise<unknown> {
+async function runTool(sb: any, me: Me, name: string, input: Record<string, unknown>, apiKey = ""): Promise<unknown> {
   const uid = me.id, tenantId = me.tenant_id;
   const today = new Date().toISOString().slice(0, 10);
   const weekEnd = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
@@ -204,6 +224,17 @@ async function runTool(sb: any, me: Me, name: string, input: Record<string, unkn
       created_at: new Date().toISOString(),
     }, { onConflict: "user_id" });
     return { staged: true, 摘要: { 標題: title, 負責人: ownerName + (fuzzy ? "（相近姓名對應，如非此人請取消）" : ""), 期限: due ?? "未設定", 優先級: pr }, 指示: "尚未寫入。請向使用者複述以上內容（含負責人；若為相近姓名對應，提醒使用者確認是否為該人），並詢問『要建立這筆任務嗎？』。已附上「確認建立/取消」按鈕請使用者點選；務必說明這是待確認、還沒建立。" };
+  }
+
+  if (name === "create_order_draft") {
+    if (!(await canCreateOrder(sb, me.id))) return { error: "你的帳號沒有建立訂單的權限，請聯絡管理者開通「訂單接收」。" };
+    const text = String(input.order_text ?? "").trim();
+    if (!text) return { error: "沒有訂單內容" };
+    const catalog = await loadCatalog(sb, tenantId);
+    const parsed = await parseOrder(apiKey, catalog, { text, senderName: me.name });
+    if (!parsed.is_order) return { not_order: true, 指示: "這段內容看起來不像訂單，請請使用者補充客戶、品項與數量。" };
+    const { orderNo } = await saveDraft(sb, me as any, parsed, catalog, { rawText: text });
+    return { staged_order: true, 訂單編號: orderNo, 指示: "草稿已建立，系統會自動附上草稿明細與送出按鈕。你只要回一句『已整理成訂單草稿，請確認』，不要重列品項。" };
   }
 
   if (name === "list_my_projects") {
@@ -300,7 +331,7 @@ async function askAssistant(sb: any, apiKey: string, me: Me, conversationId: str
     `你是「EIP 內部管理平台」的 AI 助理，正透過 LINE 與員工對話。\n` +
     `今天是 ${today}。目前使用者：${me.name}。\n` +
     `需要資料時呼叫對應工具，不要臆測或編造。依下方意圖對照判斷使用者要的是哪個功能；若屬「暫不支援」的功能，就引導他到網頁系統，不要硬用工具湊答案。\n` +
-    `你可以：查今日行事曆與待辦（get_today_agenda）、查/列任務、查專案與公告、搜文件，並可『直接幫使用者在看板建立任務』（create_task）；使用者用口語描述要新增的任務時，抽取標題、期限（YYYY-MM-DD）、優先級後呼叫 create_task；若使用者說『指派給○○』就把該姓名放進 assignee（不指定則建給本人）。建立後複述確認。\n` +
+    `你可以：查今日行事曆與待辦（get_today_agenda）、查/列任務、查專案與公告、搜文件，並可『直接幫使用者在看板建立任務』（create_task）、『把客戶訂單整理成訂單草稿』（create_order_draft；使用者描述客戶要什麼貨、幾箱、何時送時用）；使用者用口語描述要新增的任務時，抽取標題、期限（YYYY-MM-DD）、優先級後呼叫 create_task；若使用者說『指派給○○』就把該姓名放進 assignee（不指定則建給本人）。建立後複述確認。\n` +
     routingGuide +
     `\n只回答使用者「這一次」的問題，不要重複上一則已經回答過的內容，除非使用者明確要求（例如『再列一次』『剛剛那些』）。\n` +
     `格式：LINE 聊天視窗，一律純文字，不要 Markdown（不要 **、#、表格符號 |），用簡短條列（數字或「・」）。\n` +
@@ -324,7 +355,7 @@ async function askAssistant(sb: any, apiKey: string, me: Me, conversationId: str
     if (data.stop_reason === "tool_use") {
       const results: any[] = [];
       for (const tu of blocks.filter((b) => b.type === "tool_use")) {
-        try { results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(await runTool(sb, me, tu.name, tu.input ?? {})) }); }
+        try { results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(await runTool(sb, me, tu.name, tu.input ?? {}, apiKey)) }); }
         catch (e) { results.push({ type: "tool_result", tool_use_id: tu.id, is_error: true, content: `工具失敗：${(e as Error).message}` }); }
       }
       messages.push({ role: "user", content: results });
@@ -335,14 +366,216 @@ async function askAssistant(sb: any, apiKey: string, me: Me, conversationId: str
   return "（查詢次數過多，請換個方式問問看）";
 }
 
+// ───────────────────────── 已綁定使用者 ─────────────────────────
+
+async function logInbound(sb: any, me: Me, ev: any, row: Record<string, unknown>) {
+  try {
+    await sb.from("line_inbound_message").insert({
+      tenant_id: me.tenant_id, user_id: me.id, line_message_id: ev?.message?.id ?? null,
+      message_type: String(ev?.message?.type ?? "unknown"), ...row,
+    });
+  } catch (e) { console.error("logInbound", e); }
+}
+
+const ORDER_PREFIX = /^(下單|訂單|叫貨|訂貨|要貨|新訂單)[:：\s,，]*/;
+const SUBMIT_RE = /^(送出訂單|確認訂單|送出|確認|確定|是|是的|好|好的|ok|yes|y)$/i;
+const CANCEL_RE = /^(取消訂單|取消|作廢|不要|否|no|n)$/i;
+
+async function currentPendingOrder(sb: any, me: Me): Promise<{ order_id: string; created_at: string } | null> {
+  const { data } = await sb.from("line_pending_order").select("order_id, created_at").eq("user_id", me.id).maybeSingle();
+  if (!data) return null;
+  if (Date.now() - new Date(data.created_at).getTime() > PENDING_MINUTES * 60 * 1000) {
+    await sb.from("line_pending_order").delete().eq("user_id", me.id);
+    return null;
+  }
+  const { data: o } = await sb.from("eip_sales_order").select("status, deleted_at").eq("id", data.order_id).maybeSingle();
+  if (!o || o.status !== "draft" || o.deleted_at) { await sb.from("line_pending_order").delete().eq("user_id", me.id); return null; }
+  return data;
+}
+
+async function existingDraftJson(sb: any, orderId: string) {
+  const { data: o } = await sb.from("eip_sales_order").select("customer_text, delivery_date, delivery_address, note, contact_name, contact_phone, eip_customer(code,name)").eq("id", orderId).maybeSingle();
+  const { data: ls } = await sb.from("eip_sales_order_line").select("line_no, product_text, spec, qty, unit, unit_price, note, eip_product(code,name)").eq("order_id", orderId).order("line_no");
+  return {
+    customer_text: o?.customer_text, customer_code: o?.eip_customer?.code ?? o?.eip_customer?.name ?? null,
+    delivery_date: o?.delivery_date, delivery_address: o?.delivery_address, note: o?.note,
+    contact_name: o?.contact_name, contact_phone: o?.contact_phone,
+    lines: (ls ?? []).map((l: any) => ({ 第幾項: l.line_no, product_text: l.product_text, product_code: l.eip_product?.code ?? l.eip_product?.name ?? null, spec: l.spec, qty: l.qty, unit: l.unit, unit_price: l.unit_price, note: l.note })),
+  };
+}
+
+async function handleOrderInput(sb: any, token: string | undefined, anthKey: string, ev: any, me: Me, input: {
+  text?: string; image?: { mime: string; b64: string }; pdf?: { b64: string }; sheetText?: string;
+  file?: { name: string; bytes: Uint8Array; mime: string };
+}, pendingOrderId: string | null): Promise<"handled" | "not_order"> {
+  const catalog = await loadCatalog(sb, me.tenant_id);
+  const existing = pendingOrderId ? await existingDraftJson(sb, pendingOrderId) : undefined;
+  const parsed = await parseOrder(anthKey, catalog, { ...input, existing, senderName: me.name });
+  await logInbound(sb, me, ev, {
+    text_content: input.text ?? null, file_name: input.file?.name ?? null, mime_type: input.file?.mime ?? null,
+    intent: parsed.is_order ? (pendingOrderId ? "order_edit" : "order_new") : "not_order", parse_result: parsed,
+    related_order_id: pendingOrderId,
+  });
+  if (!parsed.is_order) return "not_order";
+  const { orderId } = await saveDraft(sb, me as any, parsed, catalog, { existingOrderId: pendingOrderId, rawText: input.text ?? (input.file ? `［檔案］${input.file.name}` : null) });
+  if (input.file) {
+    const att = await storeAttachment(sb, orderId, input.file.name, input.file.bytes, input.file.mime);
+    if (att) await addAttachment(sb, orderId, att);
+  }
+  const summary = await draftSummary(sb, orderId);
+  if (token && ev.replyToken) await replyOrder(sb, token, ev.replyToken, summary);
+  return "handled";
+}
+
+async function handleBound(sb: any, token: string | undefined, anthKey: string | undefined, ev: any, me: Me) {
+  const mtype = String(ev?.message?.type ?? "");
+  if (!anthKey) { if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "助理尚未啟用（缺少 API 金鑰），請聯絡管理者。"); return; }
+
+  // ── 照片／檔案：一律當訂單資料解析
+  if (mtype === "image" || mtype === "file") {
+    if (!(await canCreateOrder(sb, me.id))) {
+      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "收到檔案，但你的帳號沒有「訂單接收」的權限，請聯絡管理者開通。");
+      return;
+    }
+    if (!token) return;
+    const fileName = mtype === "file" ? String(ev.message.fileName ?? "file") : `photo_${ev.message.id}.jpg`;
+    const ext = fileName.toLowerCase().split(".").pop() ?? "";
+    const pending = await currentPendingOrder(sb, me);
+    try {
+      const { bytes, mime } = await downloadLineContent(token, ev.message.id);
+      const input: any = { file: { name: fileName, bytes, mime } };
+      if (mtype === "image") {
+        const m = /^image\/(jpeg|png|gif|webp)$/.test(mime) ? mime : "image/jpeg";
+        input.image = { mime: m, b64: toB64(bytes) };
+      } else if (ext === "pdf") {
+        input.pdf = { b64: toB64(bytes) };
+        input.file.mime = "application/pdf";
+      } else if (["xlsx", "xls", "csv"].includes(ext)) {
+        input.sheetText = ext === "csv" ? new TextDecoder().decode(bytes) : await sheetToText(bytes);
+      } else {
+        await reply(sb, token, ev.replyToken, "目前可以解析的檔案是：照片、PDF、Excel（xlsx/xls）、CSV。");
+        return;
+      }
+      const r = await handleOrderInput(sb, token, anthKey, ev, me, input, pending?.order_id ?? null);
+      if (r === "not_order") await reply(sb, token, ev.replyToken, "這份內容看起來不是訂單（沒有看到客戶或品項數量）。如果是訂單，請補一句說明，例如：「下單，王記，這張照片的品項，週五送」。");
+    } catch (e) {
+      await logMiss(sb, "line_order", `檔案解析失敗：${(e as Error).message}`);
+      await reply(sb, token, ev.replyToken, `檔案處理失敗：${(e as Error).message}`);
+    }
+    return;
+  }
+
+  if (mtype === "audio") {
+    if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "目前還不能直接聽語音檔。請按 LINE 輸入框旁的麥克風「語音輸入」，講完會自動變成文字，再按送出就可以了。");
+    return;
+  }
+  if (mtype !== "text") return;
+
+  const text = String(ev.message.text || "").trim();
+  const norm = text.replace(/\s/g, "");
+
+  // ── 待確認：任務與訂單，誰比較新就先處理誰
+  const { data: pend } = await sb.from("line_pending_task").select("*").eq("user_id", me.id).maybeSingle();
+  const pendTaskFresh = pend && (Date.now() - new Date(pend.created_at).getTime()) < 15 * 60 * 1000;
+  const pendOrder = await currentPendingOrder(sb, me);
+  const orderIsNewer = pendOrder && (!pendTaskFresh || new Date(pendOrder.created_at) > new Date(pend.created_at));
+
+  if (pendOrder && orderIsNewer) {
+    if (SUBMIT_RE.test(norm)) {
+      const { data: o, error } = await sb.from("eip_sales_order").update({ status: "pending_review" })
+        .eq("id", pendOrder.order_id).eq("status", "draft").select("order_no").maybeSingle();
+      await sb.from("line_pending_order").delete().eq("user_id", me.id);
+      await logInbound(sb, me, ev, { text_content: text, intent: "order_submit", related_order_id: pendOrder.order_id });
+      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, error ? `送出失敗：${error.message}` : `✅ 已送出訂單 ${o?.order_no ?? ""}，內勤會在系統覆核補齊資料，有問題會再跟您確認。`);
+      return;
+    }
+    if (CANCEL_RE.test(norm)) {
+      await sb.from("eip_sales_order").update({ status: "cancelled", cancelled_reason: "老闆於 LINE 取消" }).eq("id", pendOrder.order_id).eq("status", "draft");
+      await sb.from("line_pending_order").delete().eq("user_id", me.id);
+      await logInbound(sb, me, ev, { text_content: text, intent: "order_cancel", related_order_id: pendOrder.order_id });
+      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "已取消這張訂單草稿。");
+      return;
+    }
+    // 其他文字：先當成「修改草稿」解析；不是訂單內容才交給一般助理
+    const isNew = /^新訂單/.test(norm);
+    if (isNew) await sb.from("line_pending_order").delete().eq("user_id", me.id);
+    try {
+      const r = await handleOrderInput(sb, token, anthKey, ev, me, { text: text.replace(ORDER_PREFIX, "") || text }, isNew ? null : pendOrder.order_id);
+      if (r === "handled") return;
+    } catch (e) {
+      await logMiss(sb, "line_order", `訂單修改解析失敗：${(e as Error).message}`);
+      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, `訂單解析失敗：${(e as Error).message}`);
+      return;
+    }
+  } else if (pendTaskFresh) {
+    if (/^(是|是的|對|好|好的|確認|確定|建立|ok|yes|y)$/i.test(norm)) {
+      try {
+        const created = await insertTask(sb, me as Me, { title: pend.title, due_date: pend.due_date, priority: pend.priority, description: pend.description, owner_id: pend.owner_id, department_id: pend.department_id });
+        await sb.from("line_pending_task").delete().eq("user_id", me.id);
+        if (token && ev.replyToken) await reply(sb, token, ev.replyToken, `✅ 已建立任務：${created?.title}` + (pend.due_date ? `（期限 ${pend.due_date}）` : ""));
+      } catch (e) {
+        if (token && ev.replyToken) await reply(sb, token, ev.replyToken, `建立失敗：${(e as Error).message}`);
+      }
+      return;
+    }
+    if (/^(否|不|不要|取消|no|n)$/i.test(norm)) {
+      await sb.from("line_pending_task").delete().eq("user_id", me.id);
+      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "已取消建立。");
+      return;
+    }
+    await sb.from("line_pending_task").delete().eq("user_id", me.id);
+  }
+
+  // ── 明確的下單口令：直接走訂單解析，不經一般助理
+  if (ORDER_PREFIX.test(text)) {
+    if (!(await canCreateOrder(sb, me.id))) {
+      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "你的帳號沒有「訂單接收」的權限，請聯絡管理者開通。");
+      return;
+    }
+    if (pendOrder) await sb.from("line_pending_order").delete().eq("user_id", me.id);
+    try {
+      const r = await handleOrderInput(sb, token, anthKey, ev, me, { text: text.replace(ORDER_PREFIX, "") || text }, null);
+      if (r === "not_order" && token && ev.replyToken) await reply(sb, token, ev.replyToken, "沒有看懂這張訂單，請至少說明：客戶、品項、數量（交期可之後補）。例如：「下單，王記，原味 10 箱、綠茶 5 箱，週五送」。");
+    } catch (e) {
+      await logMiss(sb, "line_order", `訂單解析失敗：${(e as Error).message}`);
+      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, `訂單解析失敗：${(e as Error).message}`);
+    }
+    return;
+  }
+
+  // ── 一般助理（含 create_task / create_order_draft 工具）
+  let convoId: string | null = null;
+  const { data: convo } = await sb.from("eip_assistant_conversation").select("id").eq("user_id", me.id).eq("title", "LINE 助理").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (convo) convoId = convo.id;
+  else { const { data: nc } = await sb.from("eip_assistant_conversation").insert({ tenant_id: me.tenant_id, user_id: me.id, title: "LINE 助理" }).select("id").maybeSingle(); convoId = nc?.id ?? null; }
+  let answer = await askAssistant(sb, anthKey, me as Me, convoId, text);
+  const { data: justPend } = await sb.from("line_pending_task").select("created_at").eq("user_id", me.id).maybeSingle();
+  const justStaged = justPend && (Date.now() - new Date(justPend.created_at).getTime()) < 30000;
+  const { data: justOrder } = await sb.from("line_pending_order").select("order_id, created_at").eq("user_id", me.id).maybeSingle();
+  const orderStaged = justOrder && (Date.now() - new Date(justOrder.created_at).getTime()) < 60000;
+  let delivered = false;
+  if (token && ev.replyToken) {
+    if (orderStaged) { answer = await draftSummary(sb, justOrder.order_id); delivered = await replyOrder(sb, token, ev.replyToken, answer); }
+    else if (justStaged) delivered = await replyWithConfirm(sb, token, ev.replyToken, answer);
+    else delivered = await reply(sb, token, ev.replyToken, answer);
+  }
+  await logInbound(sb, me, ev, { text_content: text, intent: orderStaged ? "order_new" : "assistant", related_order_id: orderStaged ? justOrder.order_id : null });
+  // 對話紀錄要標出「LINE 沒送到」，否則管理者查紀錄會以為已正常回覆（M13）
+  if (convoId) await sb.from("eip_assistant_message").insert([
+    { conversation_id: convoId, role: "user", content: text },
+    { conversation_id: convoId, role: "assistant", content: delivered ? answer : "（LINE 回覆未送達）\n" + answer },
+  ]);
+}
+
+
 async function handleEvent(sb: any, token: string | undefined, anthKey: string | undefined, ev: any) {
   const lineUserId = ev?.source?.userId;
   if (ev.type === "follow") {
-    if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "歡迎加入 EIP 通知！\n請到 EIP「個人設定 → 綁定 LINE」取得綁定碼，輸入到此聊天室即可完成綁定。綁定後就能在這裡直接問我：『我今天有什麼要做?』『今天行事曆?』『幫我建立任務：明天下午回覆客戶』。");
+    if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "歡迎加入 EIP 通知！\n請到 EIP「個人設定 → 綁定 LINE」取得綁定碼，輸入到此聊天室即可完成綁定。綁定後就能在這裡直接問我：『我今天有什麼要做?』『今天行事曆?』『幫我建立任務：明天下午回覆客戶』，或用「下單，客戶、品項、數量、交期」直接建立訂單，也可以傳訂單照片或檔案。");
     return;
   }
-  if (ev.type !== "message" || ev?.message?.type !== "text") return;
-  const text = String(ev.message.text || "").trim();
+  if (ev.type !== "message") return;
+  const mtype = String(ev?.message?.type ?? "");
 
   const { data: me, error: meErr } = await sb.from("app_user")
     .select("id, name, tenant_id, role, department_id, line_user_id")
@@ -353,49 +586,12 @@ async function handleEvent(sb: any, token: string | undefined, anthKey: string |
     if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "帳號綁定狀態異常，請聯絡管理者處理。");
     return;
   }
-
-  if (me) {
-    if (!anthKey) { if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "助理尚未啟用（缺少 API 金鑰），請聯絡管理者。"); return; }
-
-    const { data: pend } = await sb.from("line_pending_task").select("*").eq("user_id", me.id).maybeSingle();
-    if (pend && (Date.now() - new Date(pend.created_at).getTime()) < 15 * 60 * 1000) {
-      const norm = text.replace(/\s/g, "");
-      if (/^(是|是的|對|好|好的|確認|確定|建立|ok|yes|y)$/i.test(norm)) {
-        try {
-          const created = await insertTask(sb, me as Me, { title: pend.title, due_date: pend.due_date, priority: pend.priority, description: pend.description, owner_id: pend.owner_id, department_id: pend.department_id });
-          await sb.from("line_pending_task").delete().eq("user_id", me.id);
-          if (token && ev.replyToken) await reply(sb, token, ev.replyToken, `✅ 已建立任務：${created?.title}` + (pend.due_date ? `（期限 ${pend.due_date}）` : ""));
-        } catch (e) {
-          if (token && ev.replyToken) await reply(sb, token, ev.replyToken, `建立失敗：${(e as Error).message}`);
-        }
-        return;
-      }
-      if (/^(否|不|不要|取消|no|n)$/i.test(norm)) {
-        await sb.from("line_pending_task").delete().eq("user_id", me.id);
-        if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "已取消建立。");
-        return;
-      }
-      await sb.from("line_pending_task").delete().eq("user_id", me.id);
-    }
-    let convoId: string | null = null;
-    const { data: convo } = await sb.from("eip_assistant_conversation").select("id").eq("user_id", me.id).eq("title", "LINE 助理").order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (convo) convoId = convo.id;
-    else { const { data: nc } = await sb.from("eip_assistant_conversation").insert({ tenant_id: me.tenant_id, user_id: me.id, title: "LINE 助理" }).select("id").maybeSingle(); convoId = nc?.id ?? null; }
-    const answer = await askAssistant(sb, anthKey, me as Me, convoId, text);
-    const { data: justPend } = await sb.from("line_pending_task").select("created_at").eq("user_id", me.id).maybeSingle();
-    const justStaged = justPend && (Date.now() - new Date(justPend.created_at).getTime()) < 30000;
-    let delivered = false;
-    if (token && ev.replyToken) {
-      if (justStaged) delivered = await replyWithConfirm(sb, token, ev.replyToken, answer);
-      else delivered = await reply(sb, token, ev.replyToken, answer);
-    }
-    // 對話紀錄要標出「LINE 沒送到」，否則管理者查紀錄會以為已正常回覆（M13）
-    if (convoId) await sb.from("eip_assistant_message").insert([
-      { conversation_id: convoId, role: "user", content: text },
-      { conversation_id: convoId, role: "assistant", content: delivered ? answer : "（LINE 回覆未送達）\n" + answer },
-    ]);
+  if (me) { await handleBound(sb, token, anthKey, ev, me as Me & { line_user_id?: string }); return; }
+  if (mtype !== "text") {
+    if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "請先完成綁定：到 EIP「個人設定 → 綁定 LINE」取得綁定碼，輸入到此聊天室。");
     return;
   }
+  const text = String(ev.message.text || "").trim();
 
   const code = text.toUpperCase();
   const { data: bc } = await sb.from("line_bind_code").select("id,user_id,expires_at,used_at").eq("code", code).maybeSingle();
