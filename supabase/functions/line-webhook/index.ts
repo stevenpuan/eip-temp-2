@@ -140,7 +140,7 @@ async function insertTask(sb: any, me: Me, p: { title: string; due_date: string 
   return data;
 }
 
-async function runTool(sb: any, me: Me, name: string, input: Record<string, unknown>, apiKey = ""): Promise<unknown> {
+async function runTool(sb: any, me: Me, name: string, input: Record<string, unknown>, apiKey = "", userText = ""): Promise<unknown> {
   const uid = me.id, tenantId = me.tenant_id;
   const today = new Date().toISOString().slice(0, 10);
   const weekEnd = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
@@ -233,7 +233,8 @@ async function runTool(sb: any, me: Me, name: string, input: Record<string, unkn
     const catalog = await loadCatalog(sb, tenantId);
     const parsed = await parseOrder(apiKey, catalog, { text, senderName: me.name });
     if (!parsed.is_order) return { not_order: true, 指示: "這段內容看起來不像訂單，請請使用者補充客戶、品項與數量。" };
-    const { orderNo } = await saveDraft(sb, me as any, parsed, catalog, { rawText: text });
+    // 原始內容存老闆的原話（不是助理改寫過的版本），方便內勤對照
+    const { orderNo } = await saveDraft(sb, me as any, parsed, catalog, { rawText: userText || text });
     return { staged_order: true, 訂單編號: orderNo, 指示: "草稿已建立，系統會自動附上草稿明細與送出按鈕。你只要回一句『已整理成訂單草稿，請確認』，不要重列品項。" };
   }
 
@@ -355,7 +356,7 @@ async function askAssistant(sb: any, apiKey: string, me: Me, conversationId: str
     if (data.stop_reason === "tool_use") {
       const results: any[] = [];
       for (const tu of blocks.filter((b) => b.type === "tool_use")) {
-        try { results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(await runTool(sb, me, tu.name, tu.input ?? {}, apiKey)) }); }
+        try { results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(await runTool(sb, me, tu.name, tu.input ?? {}, apiKey, userText)) }); }
         catch (e) { results.push({ type: "tool_result", tool_use_id: tu.id, is_error: true, content: `工具失敗：${(e as Error).message}` }); }
       }
       messages.push({ role: "user", content: results });
@@ -394,13 +395,13 @@ async function currentPendingOrder(sb: any, me: Me): Promise<{ order_id: string;
 }
 
 async function existingDraftJson(sb: any, orderId: string) {
-  const { data: o } = await sb.from("eip_sales_order").select("customer_text, delivery_date, delivery_address, note, contact_name, contact_phone, eip_customer(code,name)").eq("id", orderId).maybeSingle();
-  const { data: ls } = await sb.from("eip_sales_order_line").select("line_no, product_text, spec, qty, unit, unit_price, note, eip_product(code,name)").eq("order_id", orderId).order("line_no");
+  const { data: o } = await sb.from("eip_sales_order").select("customer_text, delivery_date, delivery_address, note, contact_name, contact_phone, eip_customer(code,name), eip_customer_address(label)").eq("id", orderId).maybeSingle();
+  const { data: ls } = await sb.from("eip_sales_order_line").select("line_no, product_text, spec, qty, unit, unit_price, price_source, note, eip_product(code,name)").eq("order_id", orderId).order("line_no");
   return {
     customer_text: o?.customer_text, customer_code: o?.eip_customer?.code ?? o?.eip_customer?.name ?? null,
-    delivery_date: o?.delivery_date, delivery_address: o?.delivery_address, note: o?.note,
+    delivery_date: o?.delivery_date, delivery_place: o?.eip_customer_address?.label ?? o?.delivery_address, note: o?.note,
     contact_name: o?.contact_name, contact_phone: o?.contact_phone,
-    lines: (ls ?? []).map((l: any) => ({ 第幾項: l.line_no, product_text: l.product_text, product_code: l.eip_product?.code ?? l.eip_product?.name ?? null, spec: l.spec, qty: l.qty, unit: l.unit, unit_price: l.unit_price, note: l.note })),
+    lines: (ls ?? []).map((l: any) => ({ 第幾項: l.line_no, product_text: l.product_text, product_code: l.eip_product?.code ?? l.eip_product?.name ?? null, spec: l.spec, qty: l.qty, unit: l.unit, unit_price: ["ai", "manual"].includes(l.price_source) ? l.unit_price : null, note: l.note })),
   };
 }
 
