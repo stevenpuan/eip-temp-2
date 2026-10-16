@@ -18,6 +18,7 @@ import { logActivity } from "@/lib/logging";
 import { humanizeError } from "@/lib/eip-error";
 
 const LOGIN_DOMAIN = "eip-template.local"; // 需與 app_config.login_domain 一致
+const SHOW_REGISTER = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("invite");
 
 function toLoginEmail(input: string) {
   const v = input.trim();
@@ -120,9 +121,11 @@ function LoginPage() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="login">
-            <TabsList className="grid w-full grid-cols-2">
+            {/* 公司內部系統：帳號一律由管理者在「帳號管理／組織架構」建立，不開放自行註冊（2026-10-17 總檢查）。
+                帶邀請碼（?invite=）進來時才顯示註冊分頁。 */}
+            <TabsList className={`grid w-full ${SHOW_REGISTER ? "grid-cols-2" : "grid-cols-1"}`}>
               <TabsTrigger value="login">登入</TabsTrigger>
-              <TabsTrigger value="register">註冊</TabsTrigger>
+              {SHOW_REGISTER && <TabsTrigger value="register">註冊</TabsTrigger>}
             </TabsList>
             <TabsContent value="login">
               <form onSubmit={onLogin} className="space-y-3 pt-3">

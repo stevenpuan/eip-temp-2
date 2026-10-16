@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, Bold, Italic, Underline, List, ListOrdered, Link as LinkIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 import { useEipUser } from "@/lib/eip-user";
 import { useAuth } from "@/lib/auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -62,7 +63,8 @@ function EditFeatureRequestPage() {
       setRequestType(q.data.request_type ?? "");
       setArea(q.data.area ?? "");
       setPoints(q.data.points_cost ?? 1);
-      if (editorRef.current) editorRef.current.innerHTML = q.data.description ?? "";
+      // 先消毒再放進編輯器：直接 innerHTML 會讓別人存進去的 <img onerror> 在編輯者的瀏覽器執行（2026-10-17 總檢查）
+      if (editorRef.current) editorRef.current.innerHTML = sanitizeHtml(q.data.description ?? "");
       setLoaded(true);
     }
   }, [q.data, loaded]);
