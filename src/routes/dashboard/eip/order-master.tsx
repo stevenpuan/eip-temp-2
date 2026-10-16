@@ -165,11 +165,11 @@ function OrderMasterPage() {
               <TableHeader>
                 <TableRow>
                   {kind === "customer" ? <>
-                    <TableHead className="w-24">代號</TableHead><TableHead>名稱</TableHead><TableHead>統編</TableHead><TableHead>付款條件</TableHead>
-                    <TableHead>稅別</TableHead><TableHead>聯絡人／電話</TableHead><TableHead className="text-center">地址</TableHead><TableHead className="text-center">專屬價</TableHead><TableHead>業務</TableHead>
+                    <TableHead className="w-24">代號</TableHead><TableHead>名稱</TableHead><TableHead className="hidden lg:table-cell">統編</TableHead><TableHead>付款條件</TableHead>
+                    <TableHead>稅別</TableHead><TableHead className="hidden lg:table-cell">聯絡人／電話</TableHead><TableHead className="text-center">地址</TableHead><TableHead className="text-center hidden lg:table-cell">專屬價</TableHead><TableHead className="hidden lg:table-cell">業務</TableHead>
                   </> : <>
-                    <TableHead className="w-24">品號</TableHead><TableHead>品名</TableHead><TableHead>規格</TableHead><TableHead>類別</TableHead>
-                    <TableHead>單位</TableHead><TableHead className="text-right">牌價</TableHead><TableHead>其他單位</TableHead><TableHead>別名</TableHead>
+                    <TableHead className="w-24">品號</TableHead><TableHead>品名</TableHead><TableHead>規格</TableHead><TableHead className="hidden lg:table-cell">類別</TableHead>
+                    <TableHead>單位</TableHead><TableHead className="text-right">牌價</TableHead><TableHead className="hidden lg:table-cell">其他單位</TableHead><TableHead className="hidden lg:table-cell">別名</TableHead>
                   </>}
                   <TableHead className="w-16">狀態</TableHead>
                 </TableRow>
@@ -187,14 +187,14 @@ function OrderMasterPage() {
                     <TableRow key={r.id} className={`cursor-pointer ${r.is_active ? "" : "opacity-50"}`} onClick={() => setEditing({ kind: "customer", row: r })}>
                       <TableCell className="font-mono text-xs">{r.code ?? "—"}</TableCell>
                       <TableCell><div className="font-medium">{r.name}</div>{r.short_name && <div className="text-xs text-muted-foreground">{r.short_name}</div>}</TableCell>
-                      <TableCell className="text-xs">{r.tax_id ?? ""}</TableCell>
-                      <TableCell className="text-sm">{r.payment_terms ?? <span className="text-amber-700 text-xs">未設定</span>}</TableCell>
+                      <TableCell className="text-xs hidden lg:table-cell">{r.tax_id ?? ""}</TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">{r.payment_terms ?? <span className="text-amber-700 text-xs">未設定</span>}</TableCell>
                       <TableCell className="text-sm">{r.tax_type ? TAX_TYPE_SHORT[r.tax_type as TaxType] : <span className="text-muted-foreground text-xs">預設</span>}</TableCell>
-                      <TableCell className="text-sm">{[r.contact_name, r.phone].filter(Boolean).join(" / ")}</TableCell>
+                      <TableCell className="text-sm hidden lg:table-cell">{[r.contact_name, r.phone].filter(Boolean).join(" / ")}</TableCell>
                       <TableCell className="text-center text-sm">{(r.eip_customer_address ?? []).length || (r.address ? 1 : <span className="text-amber-700 text-xs">無</span>)}</TableCell>
-                      <TableCell className="text-center text-sm">{nContract || ""}</TableCell>
-                      <TableCell className="text-sm">{userName.get(r.sales_owner_id) ?? ""}</TableCell>
-                      <TableCell>{r.is_active ? <Badge variant="outline" className="text-emerald-700">啟用</Badge> : <Badge variant="outline">停用</Badge>}</TableCell>
+                      <TableCell className="text-center text-sm hidden lg:table-cell">{nContract || ""}</TableCell>
+                      <TableCell className="text-sm hidden lg:table-cell">{userName.get(r.sales_owner_id) ?? ""}</TableCell>
+                      <TableCell className="whitespace-nowrap">{r.is_active ? <Badge variant="outline" className="text-emerald-700">啟用</Badge> : <Badge variant="outline">停用</Badge>}</TableCell>
                     </TableRow>
                   );
                 })}
@@ -203,12 +203,12 @@ function OrderMasterPage() {
                     <TableCell className="font-mono text-xs">{r.code ?? "—"}</TableCell>
                     <TableCell className="font-medium">{r.name}</TableCell>
                     <TableCell className="text-sm">{r.spec ?? ""}</TableCell>
-                    <TableCell className="text-sm">{r.category ?? ""}</TableCell>
+                    <TableCell className="text-sm hidden lg:table-cell">{r.category ?? ""}</TableCell>
                     <TableCell>{r.unit ?? ""}</TableCell>
                     <TableCell className="text-right tabular-nums">{r.unit_price != null ? money(r.unit_price) : <span className="text-amber-700 text-xs">未設定</span>}</TableCell>
-                    <TableCell className="text-sm">{(r.eip_product_unit ?? []).map((u: any) => u.unit).join("、")}</TableCell>
-                    <TableCell><div className="flex flex-wrap gap-1">{(r.aliases ?? []).slice(0, 4).map((a: string) => <Badge key={a} variant="secondary" className="font-normal">{a}</Badge>)}</div></TableCell>
-                    <TableCell>{r.is_active ? <Badge variant="outline" className="text-emerald-700">啟用</Badge> : <Badge variant="outline">停用</Badge>}</TableCell>
+                    <TableCell className="text-sm hidden lg:table-cell">{(r.eip_product_unit ?? []).map((u: any) => u.unit).join("、")}</TableCell>
+                    <TableCell className="hidden lg:table-cell"><div className="flex flex-wrap gap-1">{(r.aliases ?? []).slice(0, 4).map((a: string) => <Badge key={a} variant="secondary" className="font-normal">{a}</Badge>)}</div></TableCell>
+                    <TableCell className="whitespace-nowrap">{r.is_active ? <Badge variant="outline" className="text-emerald-700">啟用</Badge> : <Badge variant="outline">停用</Badge>}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
