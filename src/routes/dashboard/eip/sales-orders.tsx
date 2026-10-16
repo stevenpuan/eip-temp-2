@@ -56,8 +56,9 @@ type Customer = {
 type Address = { id: string; customer_id: string; label: string; address: string; receiver_name: string | null; receiver_phone: string | null; delivery_time_window: string | null; is_default: boolean; is_active: boolean };
 type Product = {
   id: string; code: string | null; name: string; spec: string | null; unit: string | null; unit_price: number | null; is_active: boolean;
-  aliases: string[] | null; eip_product_unit?: { unit: string }[];
+  aliases: string[] | null; eip_product_unit?: { unit: string; ratio?: number | null }[];
 };
+type Usual = { product_id: string; order_count: number; usual_unit: string | null; base_unit: string | null; avg_base_qty: number | null; max_base_qty: number | null; is_hidden: boolean };
 type Order = {
   id: string; order_no: string; status: Status; source: "line" | "web";
   customer_id: string | null; customer_text: string | null; contact_name: string | null; contact_phone: string | null;
@@ -79,7 +80,7 @@ type Line = {
 const fmtDT = (s: string | null) => (s ? new Date(s).toLocaleString("zh-TW", { hour12: false }) : "—");
 const WD = ["日", "一", "二", "三", "四", "五", "六"];
 const weekdayOf = (d: string | null) => (d ? WD[new Date(d + "T00:00:00Z").getUTCDay()] : "");
-type OrderSetting = { default_tax_type: TaxType; tax_rate: number; no_delivery_weekdays: number[]; holidays: string[] };
+type OrderSetting = { default_tax_type: TaxType; tax_rate: number; no_delivery_weekdays: number[]; holidays: string[]; qty_alert_ratio?: number };
 const isNoDeliveryDay = (s: OrderSetting, d: string | null) => !!d && (s.no_delivery_weekdays.includes(new Date(d + "T00:00:00Z").getUTCDay()) || s.holidays.includes(d));
 const nextDeliveryDay = (s: OrderSetting, d: string) => {
   const x = new Date(d + "T00:00:00Z");
@@ -263,9 +264,9 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
       supabase.from("eip_sales_order").select("*").eq("id", orderId).maybeSingle(),
       supabase.from("eip_sales_order_line").select("*").eq("order_id", orderId).order("line_no"),
       supabase.from("eip_customer").select("id,code,name,short_name,address,is_active,aliases,contact_name,phone,payment_terms,tax_type,delivery_time_window,delivery_lead_days,delivery_note").order("name").limit(3000),
-      supabase.from("eip_product").select("id,code,name,spec,unit,unit_price,is_active,aliases,eip_product_unit(unit)").order("name").limit(5000),
+      supabase.from("eip_product").select("id,code,name,spec,unit,unit_price,is_active,aliases,eip_product_unit(unit,ratio)").order("name").limit(5000),
       supabase.from("eip_sales_order_log").select("*").eq("order_id", orderId).order("created_at"),
-      supabase.from("eip_sales_order_setting").select("default_tax_type,tax_rate,no_delivery_weekdays,holidays").maybeSingle(),
+      supabase.from("eip_sales_order_setting").select("default_tax_type,tax_rate,no_delivery_weekdays,holidays,qty_alert_ratio").maybeSingle(),
     ]);
     if (o.error) { toast.error(humanizeError(o.error, "讀取訂單")); return; }
     const od = o.data as Order;
@@ -281,6 +282,7 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
     if (s.data) setSetting({
       default_tax_type: s.data.default_tax_type, tax_rate: Number(s.data.tax_rate),
       no_delivery_weekdays: (s.data.no_delivery_weekdays ?? [0]).map(Number), holidays: (s.data.holidays ?? []).map(String),
+      qty_alert_ratio: Number(s.data.qty_alert_ratio ?? 3),
     });
     await loadAddresses(od?.customer_id ?? null);
   };
@@ -289,13 +291,47 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
   const editable = !!order && order.status !== "cancelled" && order.status !== "confirmed" &&
     (canEdit || (order.created_by === user?.id && (order.status === "draft" || order.status === "pending_review")));
   const prodMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  // 此客戶常訂品項（歷史銷貨＋已確認訂單）：選單排前面、帶慣用單位、數量明顯偏離時提醒
+  const [usual, setUsual] = useState<Map<string, Usual>>(new Map());
+  useEffect(() => {
+    const cid = order?.customer_id;
+    if (!cid) { setUsual(new Map()); return; }
+    let alive = true;
+    void supabase.from("eip_customer_product_profile").select("product_id,order_count,usual_unit,base_unit,avg_base_qty,max_base_qty,is_hidden")
+      .eq("customer_id", cid).gt("order_count", 0).then(({ data }) => {
+        if (alive) setUsual(new Map(((data ?? []) as Usual[]).map((u) => [u.product_id, { ...u, avg_base_qty: u.avg_base_qty == null ? null : Number(u.avg_base_qty), max_base_qty: u.max_base_qty == null ? null : Number(u.max_base_qty) }])));
+      });
+    return () => { alive = false; };
+  }, [order?.customer_id]);
+  const qtyHint = (l: Line): string | null => {
+    const u = l.product_id ? usual.get(l.product_id) : undefined;
+    const p = l.product_id ? prodMap.get(l.product_id) : undefined;
+    if (!u || u.order_count < 2 || !u.avg_base_qty || !l.qty || !p) return null;
+    const r = !l.unit || l.unit === p.unit ? 1 : Number(p.eip_product_unit?.find((x) => x.unit === l.unit)?.ratio ?? NaN);
+    if (!Number.isFinite(r) || r <= 0) return null;
+    const base = l.qty * r, k = setting.qty_alert_ratio ?? 3, bu = u.base_unit ?? p.unit ?? "";
+    if (base > u.avg_base_qty * k) return `高於此客戶平均 ${money(u.avg_base_qty)}${bu}`;
+    if (base * k < u.avg_base_qty) return `低於此客戶平均 ${money(u.avg_base_qty)}${bu}`;
+    return null;
+  };
   const custMap = useMemo(() => new Map(customers.map((c) => [c.id, c])), [customers]);
   const sum = lines.reduce((s, l) => s + Math.round((l.qty ?? 0) * (l.unit_price ?? 0) * 100) / 100, 0);
   const totals = order ? calcTotals(sum, order.tax_type ?? setting.default_tax_type, Number(order.tax_rate ?? setting.tax_rate)) : { subtotal: 0, tax: 0, total: 0 };
   const custOpts = useMemo(() => customers.filter((c) => c.is_active || c.id === order?.customer_id)
     .map((c) => ({ value: c.id, label: `${c.code ? c.code + "｜" : ""}${c.name}`, hint: [c.short_name, c.payment_terms].filter(Boolean).join("・") || null, keywords: [c.short_name, ...(c.aliases ?? [])] })), [customers, order?.customer_id]);
   const prodOpts = useMemo(() => products.filter((p) => p.is_active || lines.some((l) => l.product_id === p.id))
-    .map((p) => ({ value: p.id, label: `${p.code ? p.code + "｜" : ""}${p.name}`, hint: [p.spec, p.unit && `${p.unit}${p.unit_price != null ? " $" + money(p.unit_price) : ""}`].filter(Boolean).join("・") || null, keywords: p.aliases ?? [] })), [products, lines]);
+    .map((p) => {
+      const u = usual.get(p.id);
+      const often = u && !u.is_hidden ? u.order_count : 0;
+      return {
+        often,
+        value: p.id, label: `${p.code ? p.code + "｜" : ""}${p.name}`,
+        hint: [often ? `★ 常訂 ${often} 次` : null, p.spec, p.unit && `${p.unit}${p.unit_price != null ? " $" + money(p.unit_price) : ""}`].filter(Boolean).join("・") || null,
+        keywords: p.aliases ?? [],
+      };
+    })
+    .sort((a, b) => b.often - a.often)
+    .map(({ often: _o, ...o }) => o), [products, lines, usual]);
 
   const setO = (patch: Partial<Order>) => setOrder((o) => (o ? { ...o, ...patch } : o));
   const setL = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
@@ -554,7 +590,7 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
                           onCreate={editable ? (t) => void addProductFromText(i, t) : undefined} createLabel="新增品項"
                           onChange={(v) => {
                             const np = v ? prodMap.get(v) : undefined;
-                            const unit = np?.unit ?? null;
+                            const unit = (v ? usual.get(v)?.usual_unit : null) ?? np?.unit ?? null;
                             setL(i, { product_id: v, unit, spec: l.spec || np?.spec || null, unit_price: null, price_source: null });
                             if (v) void repriceLine(i, v, unit);
                           }} />
@@ -566,7 +602,10 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
                         )}
                       </TableCell>
                       <TableCell><Input disabled={!editable} value={l.spec ?? ""} onChange={(e) => setL(i, { spec: e.target.value })} /></TableCell>
-                      <TableCell><NumberInput disabled={!editable} value={l.qty} onValueChange={(v) => setL(i, { qty: v })} /></TableCell>
+                      <TableCell>
+                        <NumberInput disabled={!editable} value={l.qty} onValueChange={(v) => setL(i, { qty: v })} />
+                        {qtyHint(l) && <div className="text-[11px] text-amber-700 mt-0.5 whitespace-nowrap">⚠ {qtyHint(l)}</div>}
+                      </TableCell>
                       <TableCell>
                         <Input disabled={!editable} list={`so-units-${i}`} value={l.unit ?? ""}
                           onChange={(e) => setL(i, { unit: e.target.value })}
