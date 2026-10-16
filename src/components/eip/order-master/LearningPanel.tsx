@@ -136,7 +136,7 @@ function UsualTab({ custOpts, canEdit, canImport }: { custOpts: { value: string;
         常訂品項：<b>{(stats?.items ?? 0).toLocaleString()}</b> 筆，涵蓋 <b>{stats?.customers ?? 0}</b> 家客戶
       </div>
       <p className="text-xs text-muted-foreground">
-        凌越操作：銷貨管理 → 銷貨明細表，選近 6～12 個月、輸出 Excel，直接匯入即可（認得「銷貨日期、銷貨單號、客戶代號、產品代號、數量、單位、單價」等欄名）。
+        從凌越匯出近 6～12 個月的銷貨明細（Excel）直接匯入即可：需要「銷貨日期、客戶代號、產品代號（品號）、數量」，有「單位、單價、銷貨單號」更好，常見的凌越欄名都認得。
         重新匯入會<b>取代上次匯入的歷史銷貨</b>，不影響訂單與主檔；數量小於等於 0 的銷退會略過。
       </p>
       {rep && (
