@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { CustomerDialog, type CustomerRow } from "@/components/eip/order-master/CustomerDialog";
 import { ProductDialog, type ProductRow } from "@/components/eip/order-master/ProductDialog";
 import { OrderSettingsPanel } from "@/components/eip/order-master/OrderSettingsPanel";
+import { LineTestPanel } from "@/components/eip/order-master/LineTestPanel";
 import { importWorkbook, downloadTemplate, kindLabel, type ImportReport } from "@/components/eip/order-master/importMaster";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,8 @@ export const Route = createFileRoute("/dashboard/eip/order-master")({
   ),
 });
 
-type Kind = "customer" | "product" | "setting";
+type Kind = "customer" | "product" | "setting" | "line";
+const isList = (k: Kind) => k === "customer" || k === "product";
 
 function OrderMasterPage() {
   const { can } = useAuth();
@@ -130,11 +132,11 @@ function OrderMasterPage() {
             <Button variant="outline" disabled={importing} onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-1.5" />{importing ? "匯入中…" : "匯入 Excel"}</Button>
           </>}
           {canExport && <Button variant="outline" onClick={exportAll}><Download className="h-4 w-4 mr-1.5" />匯出全部</Button>}
-          {canCreate && kind !== "setting" && <Button onClick={() => setEditing({ kind, row: null })}><Plus className="h-4 w-4 mr-1.5" />新增{kind === "customer" ? "客戶" : "品項"}</Button>}
+          {canCreate && isList(kind) && <Button onClick={() => setEditing({ kind: kind as "customer" | "product", row: null })}><Plus className="h-4 w-4 mr-1.5" />新增{kind === "customer" ? "客戶" : "品項"}</Button>}
         </>}
       />
 
-      {(incomplete > 0 || noPrice > 0) && kind !== "setting" && (
+      {(incomplete > 0 || noPrice > 0) && isList(kind) && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           資料完整度：{incomplete > 0 && <>{incomplete} 家客戶缺付款條件或送貨地址；</>}{noPrice > 0 && <>{noPrice} 個品項沒有牌價；</>}下單時這些預設值會帶不出來。
@@ -147,9 +149,10 @@ function OrderMasterPage() {
             <TabsTrigger value="customer">客戶 {customers.filter((c) => c.is_active).length}</TabsTrigger>
             <TabsTrigger value="product">品項 {products.filter((p) => p.is_active).length}</TabsTrigger>
             {canSetting && <TabsTrigger value="setting">訂單設定</TabsTrigger>}
+            {canSetting && <TabsTrigger value="line">LINE 測試</TabsTrigger>}
           </TabsList>
         </Tabs>
-        {kind !== "setting" && <>
+        {isList(kind) && <>
           <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input className="pl-8" placeholder="搜尋代號、名稱、別名、統編、電話" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -158,7 +161,7 @@ function OrderMasterPage() {
         </>}
       </div>
 
-      {kind === "setting" ? <OrderSettingsPanel canEdit={canSetting} /> : (
+      {kind === "setting" ? <OrderSettingsPanel canEdit={canSetting} /> : kind === "line" ? <LineTestPanel /> : (
         <Card>
           <CardContent className="p-0 overflow-x-auto">
             <Table>

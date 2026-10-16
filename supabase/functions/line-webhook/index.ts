@@ -15,8 +15,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   PENDING_MINUTES, canCreateOrder, loadCatalog, parseOrder, saveDraft, draftSummary,
-  downloadLineContent, toB64, storeAttachment, addAttachment, sheetToText,
+  downloadLineContent, toB64, storeAttachment, addAttachment, sheetToText, taipeiToday, customerHistoryHint,
 } from "./order.ts";
+import {
+  addDays, dateGuide, getAgenda, getSalesOrder, listTeamTasks, lookupCustomer, lookupPrice, querySalesOrders, salesSummary,
+} from "./assistant_tools.ts";
 
 const ANTHROPIC_MODEL = "claude-sonnet-4-6";
 
@@ -39,7 +42,14 @@ async function logMiss(sb: any, eventCode: string, reason: string) {
   } catch (e) { console.error("logMiss failed", e); }
 }
 
+// 網頁「LINE 測試台」：token 以 SIM: 開頭時不真的送 LINE，把要回覆的訊息收集起來回給網頁
+const simOut = new Map<string, unknown[]>();
+
 async function postReply(sb: any, token: string, body: unknown, kind: string): Promise<boolean> {
+  if (token.startsWith("SIM:")) {
+    simOut.get(token)?.push(...(((body as any)?.messages ?? []) as unknown[]));
+    return true;
+  }
   try {
     const r = await fetch("https://api.line.me/v2/bot/message/reply", {
       method: "POST",
@@ -108,8 +118,14 @@ interface Me { id: string; name: string; tenant_id: string; role: string; depart
 
 const tools = [
   { name: "get_my_work_summary", description: "回傳這位員工本人的工作概況：待辦數、逾期數、本週到期數、待確認數。問『我的概況/我有什麼要做/有沒有逾期』時用。", input_schema: { type: "object", properties: {} } },
-  { name: "get_today_agenda", description: "回傳這位員工『今天』的行事曆（個人行程，含跨日）與今天到期且未完成的任務。問『今天行事曆/今天有什麼行程/今天要做什麼/今日待辦』時用。", input_schema: { type: "object", properties: {} } },
-  { name: "list_my_tasks", description: "列出這位員工本人負責的任務，可依狀態名稱或僅逾期過濾。回傳標題、狀態、所屬專案、進度、期限、優先級。", input_schema: { type: "object", properties: { status_name: { type: "string" }, overdue_only: { type: "boolean" }, limit: { type: "number" } } } },
+  { name: "get_today_agenda", description: "回傳這位員工指定日期（預設今天）起連續幾天的行事曆：個人行程、會議（自己建立或受邀）、當天到期且未完成的任務。問『今天/明天/週五/這週有什麼行程、有什麼會、要做什麼』時用；date 用系統提示的日期對照換算成 YYYY-MM-DD，問『這週/接下來幾天』時填 days。", input_schema: { type: "object", properties: { date: { type: "string", description: "起始日 YYYY-MM-DD，預設今天" }, days: { type: "number", description: "連續幾天（1～14），預設 1" } } } },
+  { name: "list_my_tasks", description: "列出這位員工本人負責的任務（預設只列未完成），可依狀態名稱、僅逾期、幾天內到期、關鍵字過濾。回傳標題、狀態、所屬專案、進度、期限、是否逾期、優先級。", input_schema: { type: "object", properties: { status_name: { type: "string" }, overdue_only: { type: "boolean" }, due_within_days: { type: "number", description: "只列今天起幾天內到期的" }, keyword: { type: "string", description: "標題關鍵字" }, include_done: { type: "boolean" }, limit: { type: "number" } } } },
+  { name: "list_team_tasks", description: "（管理者看全公司、部門主管看管轄部門）查團隊任務：誰有哪些任務、誰逾期、某人的任務。問『大家的任務/部門有誰逾期/○○○手上有什麼』時用；查自己的請用 list_my_tasks。", input_schema: { type: "object", properties: { owner_name: { type: "string", description: "只看某位成員（姓名）" }, overdue_only: { type: "boolean" }, status_name: { type: "string" }, due_within_days: { type: "number" }, include_done: { type: "boolean" }, limit: { type: "number" } } } },
+  { name: "query_sales_orders", description: "查詢已存在的訂單清單與統計：今天／某天要出貨的單、待覆核幾張、某客戶的訂單、某段期間的訂單。回傳筆數、依狀態統計、合計金額與訂單列表。注意：要『建立』新訂單用 create_order_draft，不是這個。", input_schema: { type: "object", properties: { status: { type: "string", enum: ["open", "all", "draft", "pending_review", "confirmed", "cancelled"], description: "open＝未取消（預設）" }, customer: { type: "string", description: "客戶名稱／簡稱／別名" }, date_field: { type: "string", enum: ["delivery_date", "order_date"], description: "日期依交貨日（預設）或訂單日" }, date_from: { type: "string" }, date_to: { type: "string" }, limit: { type: "number" } } } },
+  { name: "get_sales_order", description: "查一張訂單的明細（品項、數量、單價、金額、交貨日、地址、狀態、待確認事項）。使用者給單號（可只給後幾碼）時用。", input_schema: { type: "object", properties: { order_no: { type: "string" } }, required: ["order_no"] } },
+  { name: "lookup_customer", description: "查客戶主檔：聯絡人、電話、付款條件、稅別、送貨地址與分店、收貨時段、送貨注意事項、業務、本月已確認金額、最近訂單。", input_schema: { type: "object", properties: { name: { type: "string", description: "客戶名稱／簡稱／別名／代號" } }, required: ["name"] } },
+  { name: "lookup_price", description: "查品項價格：牌價、各銷售單位；指定客戶時回傳下單會帶入的價格與來源（專屬價／上次成交價／牌價）。問『○○多少錢』『賣王記多少』時用。", input_schema: { type: "object", properties: { product: { type: "string" }, customer: { type: "string" }, unit: { type: "string" } }, required: ["product"] } },
+  { name: "sales_summary", description: "業績統計（預設只算已確認訂單、依訂單日）：某期間的訂單張數、未稅／含稅合計，並可依客戶、品項或日期排行；可限定某客戶或某品項。問『這個月業績/上週賣多少/哪個客戶叫最多/原味豆乾這個月賣幾箱』時用。期間用系統提示的日期對照。", input_schema: { type: "object", properties: { date_from: { type: "string" }, date_to: { type: "string" }, group_by: { type: "string", enum: ["customer", "product", "day"] }, customer: { type: "string" }, product: { type: "string" }, include_pending: { type: "boolean", description: "連待覆核的也算" }, top: { type: "number" } } } },
   { name: "create_task", description: "當使用者要在 EIP 看板建立任務時呼叫（『幫我建立/新增任務』『把…加到看板』『指派給○○○』）。預設負責人為本人；要指派給別人就填 assignee（成員姓名）。title 必填；due_date 選填（YYYY-MM-DD）；priority 選填（low/normal/high/urgent）；description 選填。注意：此工具只會『暫存』並等待使用者確認，不會立即寫入；呼叫後請向使用者複述內容並詢問是否確認（回是才會建立）。", input_schema: { type: "object", properties: { title: { type: "string" }, due_date: { type: "string" }, priority: { type: "string" }, description: { type: "string" }, assignee: { type: "string" } }, required: ["title"] } },
   { name: "create_order_draft", description: "使用者在『下訂單／客戶要貨／叫貨／幫客戶訂東西』時呼叫：把使用者描述訂單的原話完整放進 order_text（客戶、品項、數量、交期等）。系統會比對客戶與品項主檔、建立訂單草稿並附上確認按鈕；呼叫後只要簡短告訴使用者『草稿已建立，請確認』即可，不要自己重列品項。一般任務交辦請用 create_task，不要用這個。", input_schema: { type: "object", properties: { order_text: { type: "string" } }, required: ["order_text"] } },
   { name: "list_my_projects", description: "列出與這位員工相關的專案進度（主管/系統設計師看全公司、一般成員看自己負責或參與的）。每個專案回傳狀態、健康度燈號、任務完成數、里程碑達成、KPI 平均達成率、距結束天數、目標。問『專案進度/我的專案/食安專案怎麼樣了』時用。", input_schema: { type: "object", properties: { limit: { type: "number" } } } },
@@ -142,8 +158,9 @@ async function insertTask(sb: any, me: Me, p: { title: string; due_date: string 
 
 async function runTool(sb: any, me: Me, name: string, input: Record<string, unknown>, apiKey = "", userText = ""): Promise<unknown> {
   const uid = me.id, tenantId = me.tenant_id;
-  const today = new Date().toISOString().slice(0, 10);
-  const weekEnd = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  // 一律用台北日期（Edge 伺服器是 UTC，台灣早上 8 點前會差一天）
+  const today = taipeiToday().date;
+  const weekEnd = addDays(today, 7);
 
   if (name === "get_my_work_summary") {
     const { data } = await sb.from("task").select("due_date, task_status(name, is_done_state)")
@@ -158,34 +175,31 @@ async function runTool(sb: any, me: Me, name: string, input: Record<string, unkn
     return { 我的待辦: todo, 逾期: overdue, 本週到期: dueThisWeek, 待我確認: awaitingConfirm };
   }
 
-  if (name === "get_today_agenda") {
-    const { data: events } = await sb.from("personal_event")
-      .select("title, start_time, end_time, start_date, end_date")
-      .eq("user_id", uid).is("deleted_at", null)
-      .lte("start_date", today).or(`end_date.gte.${today},end_date.is.null`)
-      .order("start_time", { ascending: true, nullsFirst: true });
-    const { data: tasks } = await sb.from("task")
-      .select("title, priority, task_status(name, is_done_state)")
-      .eq("owner_id", uid).eq("due_date", today).is("deleted_at", null);
-    const agenda = (events ?? []).map((e: any) => ({
-      標題: e.title,
-      時間: e.start_time ? (e.start_time.slice(0, 5) + (e.end_time ? "-" + e.end_time.slice(0, 5) : "")) : "整天",
-    }));
-    const dueTasks = (tasks ?? []).filter((t: any) => t.task_status?.is_done_state !== true)
-      .map((t: any) => ({ 標題: t.title, 狀態: t.task_status?.name ?? null, 優先級: t.priority }));
-    return { 日期: today, 今日行事曆: agenda, 今日到期任務: dueTasks };
-  }
+  if (name === "get_today_agenda") return await getAgenda(sb, me, input);
+  if (name === "list_team_tasks") return await listTeamTasks(sb, me, input);
+  if (name === "query_sales_orders") return await querySalesOrders(sb, me, input);
+  if (name === "get_sales_order") return await getSalesOrder(sb, me, input);
+  if (name === "lookup_customer") return await lookupCustomer(sb, me, input);
+  if (name === "lookup_price") return await lookupPrice(sb, me, input);
+  if (name === "sales_summary") return await salesSummary(sb, me, input);
 
   if (name === "list_my_tasks") {
     const limit = Math.min(Number(input.limit) || 30, 50);
     const { data } = await sb.from("task")
       .select("title, due_date, priority, progress, task_status(name, is_done_state), project(name)")
       .eq("owner_id", uid).is("deleted_at", null)
-      .order("due_date", { ascending: true, nullsFirst: false }).limit(limit);
+      .order("due_date", { ascending: true, nullsFirst: false }).limit(300);
     let rows = (data ?? []) as any[];
+    if (!input.include_done && !input.status_name) rows = rows.filter((r) => r.task_status?.is_done_state !== true);
     if (input.status_name) rows = rows.filter((r) => r.task_status?.name === input.status_name);
     if (input.overdue_only) rows = rows.filter((r) => r.due_date && r.due_date < today && r.task_status?.is_done_state === false);
-    return rows.map((r) => ({ title: r.title, status: r.task_status?.name ?? null, project: r.project?.name ?? null, progress: r.progress, due_date: r.due_date, priority: r.priority }));
+    const within = Number(input.due_within_days);
+    if (within > 0) rows = rows.filter((r) => r.due_date && r.due_date >= today && r.due_date <= addDays(today, within));
+    const kw = String(input.keyword ?? "").trim();
+    if (kw) rows = rows.filter((r) => String(r.title).includes(kw));
+    const total = rows.length;
+    rows = rows.slice(0, limit);
+    return { 今天: today, 符合筆數: total, 任務: rows.map((r) => ({ title: r.title, status: r.task_status?.name ?? null, project: r.project?.name ?? null, progress: r.progress, due_date: r.due_date, overdue: !!(r.due_date && r.due_date < today && r.task_status?.is_done_state !== true), priority: r.priority })) };
   }
 
   if (name === "create_task") {
@@ -231,7 +245,8 @@ async function runTool(sb: any, me: Me, name: string, input: Record<string, unkn
     const text = String(input.order_text ?? "").trim();
     if (!text) return { error: "沒有訂單內容" };
     const catalog = await loadCatalog(sb, tenantId);
-    const parsed = await parseOrder(apiKey, catalog, { text, senderName: me.name });
+    const history = await customerHistoryHint(sb, tenantId, catalog, text);
+    const parsed = await parseOrder(apiKey, catalog, { text, senderName: me.name, history });
     if (!parsed.is_order) return { not_order: true, 指示: "這段內容看起來不像訂單，請請使用者補充客戶、品項與數量。" };
     // 原始內容存老闆的原話（不是助理改寫過的版本），方便內勤對照
     const { orderNo } = await saveDraft(sb, me as any, parsed, catalog, { rawText: userText || text });
@@ -325,24 +340,54 @@ async function askAssistant(sb: any, apiKey: string, me: Me, conversationId: str
     if (sup || uns) routingGuide = `\n【意圖對照（關鍵字→處理方式）】\n可直接查：\n${sup}\n\n暫不支援、請引導到網頁：\n${uns}\n`;
   } catch (_) { /* 指引載入失敗不影響回答 */ }
 
-  const messages: any[] = [{ role: "user", content: userText }];
+  // 對話記憶：帶入 30 分鐘內最近 4 輪對話，讓「那明天呢？」「第二張單呢？」接得上
+  const messages: any[] = [];
+  if (conversationId) {
+    const { data: hist } = await sb.from("eip_assistant_message").select("role, content, created_at")
+      .eq("conversation_id", conversationId).gte("created_at", new Date(Date.now() - 30 * 60e3).toISOString())
+      .order("created_at", { ascending: false }).limit(8);
+    // 同一輪的提問與回覆是同一個時間戳記寫入的，排序時讓提問排在回覆前面
+    const ordered = ((hist ?? []) as any[]).sort((a, b) =>
+      String(a.created_at).localeCompare(String(b.created_at)) || (a.role === "user" ? -1 : 1) - (b.role === "user" ? -1 : 1));
+    for (const h of ordered) {
+      const role = h.role === "assistant" ? "assistant" : "user";
+      const content = String(h.content ?? "").replace(/^（LINE 回覆未送達）\n/, "").slice(0, 1500);
+      if (!content) continue;
+      if (messages.length && messages[messages.length - 1].role === role) messages[messages.length - 1].content += "\n" + content;
+      else messages.push({ role, content });
+    }
+    while (messages.length && messages[0].role !== "user") messages.shift();
+    if (messages.length && messages[messages.length - 1].role === "user") messages.pop();
+  }
+  messages.push({ role: "user", content: userText });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const ROLE_ZH: Record<string, string> = { company_admin: "管理者（可看全公司）", dept_manager: "部門主管", member: "一般成員", viewer: "唯讀" };
+  let deptName = "";
+  if (me.department_id) {
+    const { data: d } = await sb.from("department").select("name").eq("id", me.department_id).maybeSingle();
+    deptName = d?.name ?? "";
+  }
   const system =
-    `你是「EIP 內部管理平台」的 AI 助理，正透過 LINE 與員工對話。\n` +
-    `今天是 ${today}。目前使用者：${me.name}。\n` +
-    `需要資料時呼叫對應工具，不要臆測或編造。依下方意圖對照判斷使用者要的是哪個功能；若屬「暫不支援」的功能，就引導他到網頁系統，不要硬用工具湊答案。\n` +
-    `你可以：查今日行事曆與待辦（get_today_agenda）、查/列任務、查專案與公告、搜文件，並可『直接幫使用者在看板建立任務』（create_task）、『把客戶訂單整理成訂單草稿』（create_order_draft；使用者描述客戶要什麼貨、幾箱、何時送時用）；使用者用口語描述要新增的任務時，抽取標題、期限（YYYY-MM-DD）、優先級後呼叫 create_task；若使用者說『指派給○○』就把該姓名放進 assignee（不指定則建給本人）。建立後複述確認。\n` +
+    `你是「艾士實業 EIP 內部管理平台」的 AI 助理，正透過 LINE 與員工對話。\n` +
+    `目前使用者：${me.name}（${ROLE_ZH[me.role] ?? me.role}${deptName ? "，" + deptName : ""}）。時區：台北。\n` +
+    `【日期對照（請直接使用，不要自己推算）】\n${dateGuide()}\n\n` +
+    `【回答原則】\n` +
+    `1. 只要牽涉到資料（任務、行程、會議、訂單、客戶、價格、業績、專案、公告、文件），一定先呼叫工具查，不要憑印象或推測回答。\n` +
+    `2. 數字、金額、日期、名稱一律照工具回傳的內容講，不可自行加總、換算或改寫；工具已給合計就用合計。\n` +
+    `3. 工具回傳 error 或查無資料，就照實說明（例如「這段期間沒有訂單」），不要編造。名稱對到多個候選時，列出候選請使用者選，不要自己挑。\n` +
+    `4. 先講結論（例如「今天要出貨 3 張，合計 45,000 元」），再列重點；預設最多列 5 筆，使用者要更多再列。\n` +
+    `5. 使用者在描述「要下一張新訂單」（客戶要什麼貨、幾箱、何時送）→ create_order_draft；問「已經有的訂單」→ query_sales_orders／get_sales_order。要建立任務 → create_task（抽取標題、期限、優先級；指派給某人就填 assignee），建立後複述並請使用者確認。\n` +
+    `6. 問句省略主詞時，依前面的對話補上（例如前一句問王記，接著問「地址呢」就是王記的地址）。\n` +
     routingGuide +
     `\n只回答使用者「這一次」的問題，不要重複上一則已經回答過的內容，除非使用者明確要求（例如『再列一次』『剛剛那些』）。\n` +
-    `格式：LINE 聊天視窗，一律純文字，不要 Markdown（不要 **、#、表格符號 |），用簡短條列（數字或「・」）。\n` +
+    `格式：LINE 聊天視窗，一律純文字，不要 Markdown（不要 **、#、表格符號 |），用簡短條列（數字或「・」）。金額加千分位與「元」，日期寫成 10/17（五）這種格式。\n` +
     `若使用者指定了想看的內容、欄位、數量或格式（『只列逾期』『用一行』『不要進度』『前三筆』），就照他的要求，不要多給；沒指定才預設精簡。回答用繁體中文、口語、精簡。`;
 
-  for (let turn = 0; turn < 5; turn++) {
+  for (let turn = 0; turn < 6; turn++) {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 1024, system, tools, messages }),
+      body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 1500, temperature: 0.2, system, tools, messages }),
     });
     if (!res.ok) {
       const t = await res.text().catch(() => "");
@@ -394,6 +439,24 @@ async function currentPendingOrder(sb: any, me: Me): Promise<{ order_id: string;
   return data;
 }
 
+// 對話紀錄：訂單流程也寫進「LINE 助理」對話，讓之後的追問接得上
+async function getConvoId(sb: any, me: Me): Promise<string | null> {
+  const { data: convo } = await sb.from("eip_assistant_conversation").select("id").eq("user_id", me.id).eq("title", "LINE 助理").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (convo) return convo.id;
+  const { data: nc } = await sb.from("eip_assistant_conversation").insert({ tenant_id: me.tenant_id, user_id: me.id, title: "LINE 助理" }).select("id").maybeSingle();
+  return nc?.id ?? null;
+}
+async function saveConvo(sb: any, me: Me, userText: string, answer: string, delivered = true) {
+  try {
+    const id = await getConvoId(sb, me);
+    if (!id) return;
+    await sb.from("eip_assistant_message").insert([
+      { conversation_id: id, role: "user", content: userText },
+      { conversation_id: id, role: "assistant", content: delivered ? answer : "（LINE 回覆未送達）\n" + answer },
+    ]);
+  } catch (e) { console.error("saveConvo", e); }
+}
+
 async function existingDraftJson(sb: any, orderId: string) {
   const { data: o } = await sb.from("eip_sales_order").select("customer_text, delivery_date, delivery_address, note, contact_name, contact_phone, eip_customer(code,name), eip_customer_address(label)").eq("id", orderId).maybeSingle();
   const { data: ls } = await sb.from("eip_sales_order_line").select("line_no, product_text, spec, qty, unit, unit_price, price_source, note, eip_product(code,name)").eq("order_id", orderId).order("line_no");
@@ -411,7 +474,8 @@ async function handleOrderInput(sb: any, token: string | undefined, anthKey: str
 }, pendingOrderId: string | null): Promise<"handled" | "not_order"> {
   const catalog = await loadCatalog(sb, me.tenant_id);
   const existing = pendingOrderId ? await existingDraftJson(sb, pendingOrderId) : undefined;
-  const parsed = await parseOrder(anthKey, catalog, { ...input, existing, senderName: me.name });
+  const history = !pendingOrderId && input.text ? await customerHistoryHint(sb, me.tenant_id, catalog, input.text) : null;
+  const parsed = await parseOrder(anthKey, catalog, { ...input, existing, senderName: me.name, history });
   await logInbound(sb, me, ev, {
     text_content: input.text ?? null, file_name: input.file?.name ?? null, mime_type: input.file?.mime ?? null,
     intent: parsed.is_order ? (pendingOrderId ? "order_edit" : "order_new") : "not_order", parse_result: parsed,
@@ -424,7 +488,9 @@ async function handleOrderInput(sb: any, token: string | undefined, anthKey: str
     if (att) await addAttachment(sb, orderId, att);
   }
   const summary = await draftSummary(sb, orderId);
-  if (token && ev.replyToken) await replyOrder(sb, token, ev.replyToken, summary);
+  let delivered = false;
+  if (token && ev.replyToken) delivered = await replyOrder(sb, token, ev.replyToken, summary);
+  await saveConvo(sb, me, input.text ?? (input.file ? `［檔案］${input.file.name}` : "（訂單）"), summary, delivered);
   return "handled";
 }
 
@@ -487,7 +553,9 @@ async function handleBound(sb: any, token: string | undefined, anthKey: string |
         .eq("id", pendOrder.order_id).eq("status", "draft").select("order_no").maybeSingle();
       await sb.from("line_pending_order").delete().eq("user_id", me.id);
       await logInbound(sb, me, ev, { text_content: text, intent: "order_submit", related_order_id: pendOrder.order_id });
-      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, error ? `送出失敗：${error.message}` : `✅ 已送出訂單 ${o?.order_no ?? ""}，內勤會在系統覆核補齊資料，有問題會再跟您確認。`);
+      const msg = error ? `送出失敗：${error.message}` : `✅ 已送出訂單 ${o?.order_no ?? ""}，內勤會在系統覆核補齊資料，有問題會再跟您確認。`;
+      if (token && ev.replyToken) await reply(sb, token, ev.replyToken, msg);
+      await saveConvo(sb, me, text, msg);
       return;
     }
     if (CANCEL_RE.test(norm)) {
@@ -495,6 +563,7 @@ async function handleBound(sb: any, token: string | undefined, anthKey: string |
       await sb.from("line_pending_order").delete().eq("user_id", me.id);
       await logInbound(sb, me, ev, { text_content: text, intent: "order_cancel", related_order_id: pendOrder.order_id });
       if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "已取消這張訂單草稿。");
+      await saveConvo(sb, me, text, "已取消這張訂單草稿。");
       return;
     }
     // 其他文字：先當成「修改草稿」解析；不是訂單內容才交給一般助理
@@ -545,10 +614,7 @@ async function handleBound(sb: any, token: string | undefined, anthKey: string |
   }
 
   // ── 一般助理（含 create_task / create_order_draft 工具）
-  let convoId: string | null = null;
-  const { data: convo } = await sb.from("eip_assistant_conversation").select("id").eq("user_id", me.id).eq("title", "LINE 助理").order("created_at", { ascending: false }).limit(1).maybeSingle();
-  if (convo) convoId = convo.id;
-  else { const { data: nc } = await sb.from("eip_assistant_conversation").insert({ tenant_id: me.tenant_id, user_id: me.id, title: "LINE 助理" }).select("id").maybeSingle(); convoId = nc?.id ?? null; }
+  const convoId = await getConvoId(sb, me);
   let answer = await askAssistant(sb, anthKey, me as Me, convoId, text);
   const { data: justPend } = await sb.from("line_pending_task").select("created_at").eq("user_id", me.id).maybeSingle();
   const justStaged = justPend && (Date.now() - new Date(justPend.created_at).getTime()) < 30000;
@@ -611,8 +677,45 @@ async function handleEvent(sb: any, token: string | undefined, anthKey: string |
   if (token && ev.replyToken) await reply(sb, token, ev.replyToken, "✅ 綁定成功！之後重要提醒會推送到這裡。你也可以直接問我：『我今天有什麼要做?』『今天行事曆?』，或說『幫我建立任務：…』直接下任務到看板。");
 }
 
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-eip-simulate",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+// 網頁「LINE 測試台」：以登入者本人的身分跑一次和 LINE 完全相同的處理流程，回傳機器人會回的訊息
+// （會真的建立草稿／暫存任務，與在 LINE 上操作相同；不會推送 LINE）
+async function handleSimulate(req: Request, anthKey: string | undefined): Promise<Response> {
+  const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const { data: au } = await sb.auth.getUser(jwt);
+  if (!au?.user) return json({ error: "請先登入" }, 401);
+  const { data: me } = await sb.from("app_user").select("id, name, tenant_id, role, department_id, line_user_id, status").eq("id", au.user.id).maybeSingle();
+  if (!me || me.status !== "active") return json({ error: "找不到使用者" }, 403);
+  const { data: canTest } = await sb.rpc("eip_user_has_perm", { p_user: me.id, p_module: "eip_order_master", p_action: "edit" });
+  if (me.role !== "company_admin" && canTest !== true) return json({ error: "只有管理者可以使用 LINE 測試台" }, 403);
+  let body: any = {};
+  try { body = await req.json(); } catch { /* ignore */ }
+  const text = String(body?.text ?? "").trim().slice(0, 2000);
+  if (!text) return json({ error: "請輸入訊息" }, 400);
+  const token = "SIM:" + crypto.randomUUID();
+  simOut.set(token, []);
+  const ev = { type: "message", replyToken: "SIM", source: { userId: me.line_user_id ?? "simulator" }, message: { type: "text", id: "sim-" + crypto.randomUUID(), text } };
+  const t0 = Date.now();
+  try {
+    await handleBound(sb, token, anthKey, ev, me as Me);
+    return json({ replies: simOut.get(token) ?? [], ms: Date.now() - t0 });
+  } catch (e) {
+    await logMiss(sb, "line_simulate", `測試台處理失敗：${(e as Error).message}`);
+    return json({ error: (e as Error).message, replies: simOut.get(token) ?? [] }, 500);
+  } finally { simOut.delete(token); }
+}
+
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return new Response("ok");
+  if (req.headers.get("x-eip-simulate") === "1") return await handleSimulate(req, Deno.env.get("ANTHROPIC_API_KEY"));
   const secret = Deno.env.get("LINE_CHANNEL_SECRET");
   const token = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN");
   const anthKey = Deno.env.get("ANTHROPIC_API_KEY");
