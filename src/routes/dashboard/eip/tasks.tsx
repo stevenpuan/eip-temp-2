@@ -1497,6 +1497,7 @@ function ListView({
   };
 
   const canBulk = canManage;
+
   // 多一欄「子項」（規格書 E 章：列表視圖再加「子項 n/m ＋進度條」）
   const cols = canBulk
     ? "32px minmax(0,1fr) 96px 88px 84px 64px 72px 112px 132px"
@@ -2021,7 +2022,7 @@ function CreateTaskDialog({
                     />
                     <Input
                       value={row.url}
-                      placeholder="\\\\NAS\\品保\\2026\\ 或 https://…"
+                      placeholder="\\NAS\品保\2026\ 或 https://…"
                       className="h-8 text-sm font-mono"
                       onChange={(e) =>
                         setLinks((s) => s.map((x) => (x.key === row.key ? { ...x, url: e.target.value } : x)))
