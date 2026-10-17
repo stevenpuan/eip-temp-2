@@ -3,7 +3,7 @@ import { RequirePerm } from "@/components/RequirePerm";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, GripVertical, Download, Paperclip, ListChecks, Link2, Repeat, SlidersHorizontal, MoreHorizontal, Pencil, Trash2, UserMinus, UserPen } from "lucide-react";
+import { Plus, GripVertical, Download, Paperclip, ListChecks, Link2, Repeat, SlidersHorizontal, MoreHorizontal, Pencil, Trash2, UserMinus, UserPen, ArrowRight } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetHeader } from "@/components/ui/sheet";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -40,6 +40,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -173,6 +175,17 @@ const ALL_PRIORITIES: Priority[] = ["low", "normal", "high", "urgent"];
 // moveMutation 用的哨兵：把「PostgREST 回 0 列」跟真正的連線／SQL 錯誤分開報。
 // 訊息不會直接顯示給使用者（onError 會換成看得懂的說明），只是用來辨識來源。
 const MOVE_BLOCKED = "__move_blocked_0_rows__";
+
+/** 看板移動一張卡片：拖曳換欄、欄內手動排序、卡片選單「移動到」都走這裡。 */
+type MoveVars = {
+  taskId: string;
+  toStatusId: string;
+  newPosition: number;
+  /** 原本的狀態；跟 toStatusId 不同才跳「已移到…」提示（欄內排序不提示） */
+  fromStatusId?: string;
+  /** 附在成功提示後面的補充說明，例如週期任務提醒填回報 */
+  note?: string;
+};
 
 function TasksPage() {
   const qc = useQueryClient();
@@ -395,7 +408,8 @@ function TasksPage() {
   }, [search.openTask, tasksQ.data, tasksQ.isLoading]);
 
   const moveMutation = useMutation({
-    mutationFn: async (vars: { taskId: string; toStatusId: string; newPosition: number }) => {
+    // 看板拖曳換欄／卡片選單「移動到」共用。fromStatusId 與 note 只用來決定成功提示，不進資料庫。
+    mutationFn: async (vars: MoveVars) => {
       if (!appUser) throw new Error("尚未取得 EIP 身分");
       const status = (statusesQ.data ?? []).find((s) => s.id === vars.toStatusId);
       const patch: Database["public"]["Tables"]["task"]["Update"] = {
@@ -427,7 +441,33 @@ function TasksPage() {
       });
       if (le) toast.warning("狀態已更新，但執行歷程未寫入");
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["eip", "tasks-full"] }),
+    // 樂觀更新：放開滑鼠的當下卡片就停在新欄位，不用等資料庫來回才跳過去。
+    // 失敗時 onError 會 invalidate，從伺服器重抓＝把卡片放回原位。
+    onMutate: async (vars) => {
+      await qc.cancelQueries({ queryKey: ["eip", "tasks-full"] });
+      const status = (statusesQ.data ?? []).find((s) => s.id === vars.toStatusId);
+      qc.setQueriesData<Task[]>({ queryKey: ["eip", "tasks-full"] }, (old) =>
+        old?.map((t) =>
+          t.id !== vars.taskId
+            ? t
+            : {
+                ...t,
+                status_id: vars.toStatusId,
+                board_position: vars.newPosition,
+                ...(status?.is_done_state
+                  ? { progress: 100, completed_at: new Date().toISOString() }
+                  : { completed_at: null }),
+              },
+        ),
+      );
+    },
+    onSuccess: (_d, vars) => {
+      if (vars.fromStatusId && vars.fromStatusId !== vars.toStatusId) {
+        const name = (statusesQ.data ?? []).find((s) => s.id === vars.toStatusId)?.name ?? "新狀態";
+        toast.success(`已移到「${name}」${vars.note ? `。${vars.note}` : ""}`);
+      }
+      return qc.invalidateQueries({ queryKey: ["eip", "tasks-full"] });
+    },
     onError: (e) => {
       // 失敗時也要 invalidate：看板是直接畫 tasks-full 的資料，重新載入才會把卡片
       // 放回它在伺服器上真正的欄位與位置（有樂觀更新時這一步就是回滾）。
@@ -545,9 +585,7 @@ function TasksPage() {
             can={can}
 
 
-            onMove={(taskId, toStatusId, newPosition) =>
-              moveMutation.mutate({ taskId, toStatusId, newPosition })
-            }
+            onMove={(vars) => moveMutation.mutate(vars)}
             onOpenDetail={(t) => setDetailTask(t)}
             onAskDelete={(t) => setDeleteTask(t)}
           />
@@ -851,12 +889,17 @@ function BoardView({
   appUser: AppUser | null;
   can: CanFn;
 
-  onMove: (taskId: string, toStatusId: string, newPosition: number) => void;
+  onMove: (vars: MoveVars) => void;
   onOpenDetail: (t: Task) => void;
   onAskDelete: (t: Task) => void;
 }) {
 
+  // 拖曳狀態：拖哪張卡、目前懸停在哪一欄、（手動排序時）會插在哪張卡前面
   const [dragId, setDragId] = useState<string | null>(null);
+  const [overCol, setOverCol] = useState<string | null>(null);
+  const [dropBefore, setDropBefore] = useState<string | null>(null);
+  const resetDrag = () => { setDragId(null); setOverCol(null); setDropBefore(null); };
+  const dragTask = dragId ? tasks.find((t) => t.id === dragId) : undefined;
   // 完成欄預設收合。日常工作不需要看到一整個月完成的東西，
   // 收合後不渲染卡片，欄位再長也不影響畫面與效能。
   const [expandedDone, setExpandedDone] = useState<Set<string>>(new Set());
@@ -868,7 +911,8 @@ function BoardView({
     });
 
   // 看板每欄的排序方式。預設「智慧」＝急件優先＋期限近的在上，一眼看到最該處理的。
-  // 想手動微調就切「手動」（拖曳）；一拖曳也會自動切回手動，讓拖的結果立刻生效。
+  // 拖曳換欄（＝變更狀態）在任何排序下都能用；欄內上下調整順序只在「手動拖曳」時有意義，
+  // 其他排序下欄內順序由系統決定，拖了也會被排序蓋掉，所以不寫入。
   const [boardSort, setBoardSort] = useState<"smart" | "due" | "priority" | "created" | "manual">("smart");
 
   // urgent 最高、low 最低（ALL_PRIORITIES = low<normal<high<urgent）
@@ -905,15 +949,59 @@ function BoardView({
   const colTasks = (statusId: string) =>
     tasks.filter((t) => t.status_id === statusId).slice().sort(boardCmp);
 
+  // 放到某欄最後面用的位置：取該欄目前看得到的任務中最大的位置 +1
+  const endPosition = (statusId: string) => {
+    const inCol = tasks.filter((x) => x.status_id === statusId);
+    return inCol.length ? Math.max(...inCol.map((x) => x.board_position)) + 1 : 1;
+  };
+
+  // 移到「完成」時，週期任務順便提醒填回報（回報不是必填，所以只提醒不擋）
+  const moveNote = (t: Task, toStatusId: string) =>
+    t.recurring_rule_id && !t.report_data && statuses.find((s) => s.id === toStatusId)?.is_done_state
+      ? "這是週期任務，如需回報請點卡片上的「檢視／修正回報」"
+      : undefined;
+
+  /** 卡片選單「移動到」：不用拖曳也能換欄（手機、觸控螢幕用這個） */
+  const moveTo = (t: Task, toStatusId: string) => {
+    if (t.status_id === toStatusId) return;
+    onMove({
+      taskId: t.id, toStatusId, newPosition: endPosition(toStatusId),
+      fromStatusId: t.status_id, note: moveNote(t, toStatusId),
+    });
+  };
+
   const handleColumnDrop = (statusId: string, beforeId?: string) => {
-    if (!dragId) return;
-    const list = colTasks(statusId).filter((t) => t.id !== dragId);
-    const idx = beforeId ? list.findIndex((t) => t.id === beforeId) : list.length;
-    const prev = idx > 0 ? list[idx - 1].board_position : 0;
+    const dragged = dragTask;
+    resetDrag();
+    if (!dragged) return;
+    const sameCol = dragged.status_id === statusId;
+
+    if (boardSort !== "manual") {
+      // 欄內順序由目前的排序決定，同欄放開不寫資料庫，只提示怎麼手動排
+      if (sameCol) {
+        if (beforeId && beforeId !== dragged.id) {
+          toast.info(`目前每欄依「${SORT_LABEL[boardSort]}」排序。要自己調整欄內順序，請把右上「每欄排序」切成「手動拖曳」。`);
+        }
+        return;
+      }
+      onMove({
+        taskId: dragged.id, toStatusId: statusId, newPosition: endPosition(statusId),
+        fromStatusId: dragged.status_id, note: moveNote(dragged, statusId),
+      });
+      return;
+    }
+
+    // 手動排序：插在 beforeId 前面（沒有就放最後），位置取前後兩張卡的中間值
+    if (beforeId === dragged.id) return;
+    const list = colTasks(statusId).filter((t) => t.id !== dragged.id);
+    let idx = beforeId ? list.findIndex((t) => t.id === beforeId) : list.length;
+    if (idx < 0) idx = list.length;
+    const prev = idx > 0 ? list[idx - 1].board_position : (list[0]?.board_position ?? 0) - 2;
     const next = idx < list.length ? list[idx].board_position : prev + 2;
-    const newPos = (prev + next) / 2;
-    onMove(dragId, statusId, newPos);
-    setDragId(null);
+    onMove({
+      taskId: dragged.id, toStatusId: statusId, newPosition: (prev + next) / 2,
+      fromStatusId: dragged.status_id, note: sameCol ? undefined : moveNote(dragged, statusId),
+    });
   };
 
   const countBadgeTone = (idx: number, isDone: boolean) => {
@@ -930,16 +1018,19 @@ function BoardView({
 
   return (
     <>
-    <div className="flex items-center justify-end gap-2 pb-3">
-      {boardSort !== "manual" && (
-        <span className="text-[11.5px] text-muted-foreground/70 shrink-0">想手動調整順序？切成「手動拖曳」即可拖動卡片</span>
-      )}
-      <span className="text-xs text-muted-foreground shrink-0">每欄排序</span>
-      <div className="w-[190px]">
-        <MiniSelect
-          value={boardSort}
-          onChange={(v) => setBoardSort(v as typeof boardSort)}
-          options={(Object.keys(SORT_LABEL) as (typeof boardSort)[]).map((k) => ({ value: k, label: SORT_LABEL[k] }))} />
+    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 pb-3">
+      <span className="text-[11.5px] text-muted-foreground/80 min-w-0">
+        拖曳卡片到其他欄即可變更狀態
+        {boardSort !== "manual" && "；要自己排欄內順序，請切成「手動拖曳」"}
+      </span>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-xs text-muted-foreground shrink-0">每欄排序</span>
+        <div className="w-[190px]">
+          <MiniSelect
+            value={boardSort}
+            onChange={(v) => setBoardSort(v as typeof boardSort)}
+            options={(Object.keys(SORT_LABEL) as (typeof boardSort)[]).map((k) => ({ value: k, label: SORT_LABEL[k] }))} />
+        </div>
       </div>
     </div>
     <div className="grid gap-6 overflow-x-auto pb-2"
@@ -947,10 +1038,26 @@ function BoardView({
       {statuses.map((s, idx) => {
         const list = colTasks(s.id);
         const collapsed = !!s.is_done_state && !expandedDone.has(s.id) && list.length > 0;
+        // 拖曳中、懸停在「別的」欄 → 這一欄亮起來，表示放開就會換到這個狀態
+        const isTarget = !!dragTask && overCol === s.id && dragTask.status_id !== s.id;
+        const showEndLine = boardSort === "manual" && !!dragTask && overCol === s.id && dropBefore === null && !collapsed && list.length > 0;
         return (
           <div key={s.id}
-            className="flex flex-col gap-5 min-h-[440px]"
-            onDragOver={(e) => e.preventDefault()}
+            className={`flex flex-col gap-5 min-h-[440px] rounded-2xl transition-colors ${isTarget ? "bg-accent/10 ring-2 ring-accent/50 ring-offset-4 ring-offset-background" : ""}`}
+            onDragOver={(e) => {
+              // 只接受看板卡片（不接受從桌面拖進來的檔案之類）
+              if (!dragId) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (overCol !== s.id) setOverCol(s.id);
+              if (dropBefore !== null) setDropBefore(null);
+            }}
+            onDragLeave={(e) => {
+              // 移到欄內子元素也會觸發 dragleave，真的離開這一欄才取消高亮
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                setOverCol((c) => (c === s.id ? null : c));
+              }
+            }}
             onDrop={(e) => { e.preventDefault(); handleColumnDrop(s.id); }}>
             <div className="flex items-end justify-between px-1 pb-2 border-b-2 border-primary/10">
               <h2 className="text-xl font-semibold text-primary flex items-center gap-3 font-[family-name:Outfit,ui-sans-serif]">
@@ -969,38 +1076,53 @@ function BoardView({
             <div className="space-y-4 max-h-[calc(100vh-320px)] overflow-y-auto pr-1 -mr-1">
               {collapsed && (
                 <button type="button" onClick={() => toggleDone(s.id)}
-                  className="w-full rounded-xl border border-dashed py-6 text-sm text-muted-foreground hover:bg-muted/40 transition-colors">
-                  已完成 {list.length} 件・點此展開
+                  className={`w-full rounded-xl border border-dashed py-6 text-sm transition-colors ${isTarget ? "border-accent text-accent bg-accent/10" : "text-muted-foreground hover:bg-muted/40"}`}>
+                  {isTarget ? "放開即移到「" + s.name + "」" : `已完成 ${list.length} 件・點此展開`}
                 </button>
               )}
-              {!collapsed && list.map((t) => (
-                <div key={t.id}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleColumnDrop(s.id, t.id); }}>
-                  <TaskCard task={t} owner={userMap.get(t.owner_id)}
-                    creator={userMap.get(t.created_by)}
-                    subtask={subtaskMap.get(t.id)}
-                    source={sourceMap.get(t.id)}
-                    deptMap={deptMap}
-                    statuses={statuses}
-                    canEdit={canEditTask(t, appUser, can, collabMap)}
-                    canDelete={canDeleteTask(t, appUser, can, collabMap)}
-
-                    canDrag={boardSort === "manual"}
-                    onDragStart={() => setDragId(t.id)}
-                    onOpenDetail={() => onOpenDetail(t)}
-                    onAskDelete={() => onAskDelete(t)}
-                    onChangeStatus={(sid) => {
-                      const list = tasks.filter((x) => x.status_id === sid).sort((a, b) => a.board_position - b.board_position);
-                      const last = list.length ? list[list.length - 1].board_position : 0;
-                      onMove(t.id, sid, last + 1);
-                    }} />
-
-                </div>
-              ))}
+              {!collapsed && list.map((t) => {
+                const canDrag = canEditTask(t, appUser, can, collabMap);
+                return (
+                  <div key={t.id} className="relative"
+                    onDragOver={(e) => {
+                      if (!dragId) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = "move";
+                      if (overCol !== s.id) setOverCol(s.id);
+                      if (boardSort === "manual" && dropBefore !== t.id) setDropBefore(t.id);
+                    }}
+                    onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleColumnDrop(s.id, t.id); }}>
+                    {boardSort === "manual" && dragId && dragId !== t.id && overCol === s.id && dropBefore === t.id && (
+                      <div className="pointer-events-none absolute -top-2.5 left-1 right-1 h-1 rounded-full bg-accent" />
+                    )}
+                    <TaskCard task={t} owner={userMap.get(t.owner_id)}
+                      creator={userMap.get(t.created_by)}
+                      subtask={subtaskMap.get(t.id)}
+                      source={sourceMap.get(t.id)}
+                      deptMap={deptMap}
+                      statuses={statuses}
+                      canEdit={canDrag}
+                      canDelete={canDeleteTask(t, appUser, can, collabMap)}
+                      canDrag={canDrag}
+                      dragging={dragId === t.id}
+                      onDragStart={(e) => {
+                        // Firefox 沒 setData 就不會開始拖曳
+                        e.dataTransfer.setData("text/plain", t.id);
+                        e.dataTransfer.effectAllowed = "move";
+                        setDragId(t.id);
+                      }}
+                      onDragEnd={resetDrag}
+                      onOpenDetail={() => onOpenDetail(t)}
+                      onAskDelete={() => onAskDelete(t)}
+                      onChangeStatus={(sid) => moveTo(t, sid)} />
+                  </div>
+                );
+              })}
+              {showEndLine && <div className="pointer-events-none h-1 rounded-full bg-accent" />}
               {list.length === 0 && (
-                <div className="text-xs text-muted-foreground px-2 py-10 text-center border border-dashed border-primary/15 rounded-2xl bg-card/40">
-                  無任務
+                <div className={`text-xs px-2 py-10 text-center border border-dashed rounded-2xl transition-colors ${isTarget ? "border-accent text-accent bg-accent/10" : "text-muted-foreground border-primary/15 bg-card/40"}`}>
+                  {isTarget ? "放開即移到「" + s.name + "」" : "無任務"}
                 </div>
               )}
             </div>
@@ -1012,15 +1134,18 @@ function BoardView({
   );
 }
 
-function TaskCard({ task, owner, creator, subtask, source, deptMap, statuses, canEdit, canDelete, canDrag, onDragStart, onOpenDetail, onAskDelete, onChangeStatus }: {
+function TaskCard({ task, owner, creator, subtask, source, deptMap, statuses, canEdit, canDelete, canDrag, dragging, onDragStart, onDragEnd, onOpenDetail, onAskDelete, onChangeStatus }: {
   task: Task; owner?: AppUser; creator?: AppUser;
   subtask?: { total: number; done: number };
   source?: TaskSource;
   deptMap: Map<string, Department>;
   statuses: Status[];
   canEdit: boolean; canDelete: boolean;
+  /** 有編輯權才能拖；沒權限的卡片拖不動，避免拖過去才被資料庫退回 */
   canDrag: boolean;
-  onDragStart: () => void;
+  dragging: boolean;
+  onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnd: () => void;
   onOpenDetail: () => void;
   onAskDelete: () => void;
   onChangeStatus: (statusId: string) => void;
@@ -1055,9 +1180,11 @@ function TaskCard({ task, owner, creator, subtask, source, deptMap, statuses, ca
   return (
     <Card
       draggable={canDrag}
-      onDragStart={onDragStart}
+      onDragStart={canDrag ? onDragStart : undefined}
+      onDragEnd={canDrag ? onDragEnd : undefined}
       onClick={onOpenDetail}
-      className={`group relative cursor-pointer rounded-xl border-border/70 bg-card overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${task.progress >= 100 ? "opacity-70" : ""}`}
+      title={canDrag ? "拖曳到其他欄可變更狀態；點一下開啟詳情" : undefined}
+      className={`group relative cursor-pointer rounded-xl border-border/70 bg-card overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${dragging ? "opacity-40 ring-2 ring-accent/60" : task.progress >= 100 ? "opacity-70" : ""}`}
     >
       {accentBar && <div className={`absolute top-0 left-0 w-1 h-full ${accentBar}`} />}
       <CardContent className="p-3 space-y-2">
@@ -1066,9 +1193,9 @@ function TaskCard({ task, owner, creator, subtask, source, deptMap, statuses, ca
           <div className="flex items-center gap-2.5 min-w-0">
             {canDrag && (
               <GripVertical
+                aria-hidden
                 className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0 cursor-grab active:cursor-grabbing group-hover:text-accent transition-colors"
                 onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
               />
             )}
             <Badge className={`text-[11px] rounded px-1.5 py-0 border-none ${PRIORITY_COLOR[task.priority]}`} variant="secondary">
@@ -1098,6 +1225,21 @@ function TaskCard({ task, owner, creator, subtask, source, deptMap, statuses, ca
                   <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onOpenDetail(); }}>
                     <Pencil className="w-3.5 h-3.5 mr-2" /> 編輯
                   </DropdownMenuItem>
+                )}
+                {/* 手機、觸控螢幕不支援拖曳，從這裡一樣可以換欄 */}
+                {canEdit && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">移動到</DropdownMenuLabel>
+                    {statuses.filter((st) => st.id !== task.status_id).map((st) => (
+                      <DropdownMenuItem key={st.id} onClick={(e) => { e.stopPropagation(); onChangeStatus(st.id); }}>
+                        <ArrowRight className="w-3.5 h-3.5 mr-2" /> {st.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
+                {canDelete && (
+                  <DropdownMenuSeparator />
                 )}
                 {canDelete && (
                   <DropdownMenuItem
@@ -1355,12 +1497,11 @@ function ListView({
   };
 
   const canBulk = canManage;
-
   // 多一欄「子項」（規格書 E 章：列表視圖再加「子項 n/m ＋進度條」）
   const cols = canBulk
     ? "32px minmax(0,1fr) 96px 88px 84px 64px 72px 112px 132px"
     : "minmax(0,1fr) 96px 88px 84px 64px 72px 112px 132px";
-  const arrow = (kk: SortKey) => (sortKey === kk ? (sortDir === "asc" ? " \u25B2" : " \u25BC") : "");
+  const arrow = (kk: SortKey) => (sortKey === kk ? (sortDir === "asc" ? " ▲" : " ▼") : "");
   const Hd = ({ label, kk }: { label: string; kk: SortKey }) => (
     <button type="button" onClick={() => toggleSort(kk)} className="flex items-center hover:text-foreground truncate">
       {label}<span className="text-[11.5px]">{arrow(kk)}</span>
@@ -1880,7 +2021,7 @@ function CreateTaskDialog({
                     />
                     <Input
                       value={row.url}
-                      placeholder="\\NAS\品保\2026\ 或 https://…"
+                      placeholder="\\\\NAS\\品保\\2026\\ 或 https://…"
                       className="h-8 text-sm font-mono"
                       onChange={(e) =>
                         setLinks((s) => s.map((x) => (x.key === row.key ? { ...x, url: e.target.value } : x)))
