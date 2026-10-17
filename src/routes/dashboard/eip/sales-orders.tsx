@@ -66,7 +66,7 @@ type Order = {
   order_date: string; delivery_date: string | null; delivery_address: string | null; note: string | null;
   customer_address_id: string | null; delivery_time_window: string | null; payment_terms: string | null;
   tax_type: TaxType; tax_rate: number; subtotal: number; tax_amount: number; total_amount: number;
-  raw_text: string | null; ai_summary: string | null; ai_issues: string[]; attachments: { path: string; name: string; mime: string; size: number }[];
+  raw_text: string | null; ai_summary: string | null; ai_issues: string[]; attachments: { path: string; name: string; mime: string; size: number; expired?: boolean }[];
   created_by: string | null; owner_confirmed_at: string | null; reviewed_by: string | null; reviewed_at: string | null;
   cancelled_reason: string | null; erp_order_no: string | null; created_at: string;
   eip_customer?: { name: string; code: string | null } | null;
@@ -649,7 +649,11 @@ function OrderDialog({ orderId, canEdit, userName, onClose }: {
             {order.attachments?.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-1">
                 {order.attachments.map((a) => (
-                  <Button key={a.path} size="sm" variant="outline" className="h-7 text-xs" onClick={() => openAttachment(a.path)}><Paperclip className="h-3 w-3 mr-1" />{a.name}</Button>
+                  a.expired ? (
+                    <Button key={a.path} size="sm" variant="outline" className="h-7 text-xs" disabled title="原始檔已超過保存期限（180 天）自動刪除"><Paperclip className="h-3 w-3 mr-1" />{a.name}（已過保存期限）</Button>
+                  ) : (
+                    <Button key={a.path} size="sm" variant="outline" className="h-7 text-xs" onClick={() => openAttachment(a.path)}><Paperclip className="h-3 w-3 mr-1" />{a.name}</Button>
+                  )
                 ))}
               </div>
             )}
