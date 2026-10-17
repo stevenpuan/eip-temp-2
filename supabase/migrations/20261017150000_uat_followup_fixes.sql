@@ -131,7 +131,7 @@ update public.task t
    and (t.department_id is null or (t.project_id is null and m.project_id is not null));
 
 ------------------------------------------------------------
--- 3. 任務類型「拍攝影片」是陞輝遺留（艾士沒有這項作業）；沒有任務使用才移除
+-- 3. 任務類型「拍攝影片」是陞煇遺留（艾士沒有這項作業）；沒有任務使用才移除
 ------------------------------------------------------------
 delete from public.task_type tt
  where tt.name = '拍攝影片'
