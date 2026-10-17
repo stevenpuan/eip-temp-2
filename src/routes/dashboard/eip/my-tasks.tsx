@@ -301,8 +301,8 @@ function MyTasksPage() {
 
       <Card className="mb-3">
         <CardContent className="p-3 flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">來源</span>
+          <div className="flex min-w-0 max-w-full items-center gap-2">
+            <span className="shrink-0 text-xs text-muted-foreground">來源</span>
             <Tabs value={sourceFilter} onValueChange={(v) => setSourceFilter(v as SourceFilter)}>
               <TabsList className="h-8">
                 <TabsTrigger value="all" className="text-xs">
@@ -324,8 +324,8 @@ function MyTasksPage() {
               </TabsList>
             </Tabs>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">狀態</span>
+          <div className="flex min-w-0 max-w-full items-center gap-2">
+            <span className="shrink-0 text-xs text-muted-foreground">狀態</span>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -340,8 +340,8 @@ function MyTasksPage() {
               ))}
             </select>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">分組</span>
+          <div className="flex min-w-0 max-w-full items-center gap-2">
+            <span className="shrink-0 text-xs text-muted-foreground">分組</span>
             <Tabs value={groupBy} onValueChange={(v) => setGroupBy(v as typeof groupBy)}>
               <TabsList className="h-8">
                 <TabsTrigger value="none" className="text-xs">
